@@ -1,14 +1,16 @@
 # -*- ruby -*-
-# frozen_string_literal: true
 
-# Toplevel namespace
+require 'kuzu'
+require 'loggability'
+require 'configurability'
+
+
+# Distributed factspace toolkit
 module Rhizos
 
 	# Package version
 	VERSION = '0.0.1'
 
-	# Version control revision
-	REVISION = %q$Revision$
 
 
 end # module Rhizos
