@@ -1,10 +1,10 @@
 # rhizos
 
 home
-: https://gitlab.com/ravngroup/helios/rhizos
+: https://github.com/RavnGroup/rhizos
 
 code
-: https://gitlab.com/ravngroup/helios/rhizos/-/tree/master
+: https://github.com/RavnGroup/rhizos/
 
 docs
 : https://dev.ravn.com/docs/rhizos
@@ -12,12 +12,13 @@ docs
 
 ## Description
 
-
+A shared-state application layer for highly cooperative applications.
 
 
 ## Prerequisites
 
-* Ruby
+* Ruby 3.4+
+* Kuzu 0.10.0+
 
 
 ## Installation
@@ -27,13 +28,14 @@ docs
 
 ## Development
 
-You can check out the current source with Git via Gitlab:
+You can check out the current source with Git via Github:
 
-    $ git clone git@gitlab.com:ravngroup/helios/rhizos.git
-    $ cd helios
+    $ git clone git@github.com:RavnGroup/helios/rhizos.git
+    $ cd rhizos
 
 After checking out the source, run:
 
+    $ gem install -Ng
     $ rake setup
 
 This task will install dependencies, and do any other necessary setup for development.
@@ -41,11 +43,12 @@ This task will install dependencies, and do any other necessary setup for develo
 
 ## Authors
 
-- #TODO#
+- Michael Granger <ged@FaerieMUD.org>
+- Mahlon E. Smith <mahlon@martini.nu>
 
 
 ## License
 
-Copyright (c) 2024, Ravn Group
+Copyright (c) 2024-2025, Ravn Group
 All rights reserved.
 
