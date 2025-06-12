@@ -12,7 +12,7 @@ docs
 
 ## Description
 
-A shared-state application layer for highly cooperative applications.
+A shared state layer for highly cooperative applications.
 
 
 ## Prerequisites
@@ -51,4 +51,3 @@ This task will install dependencies, and do any other necessary setup for develo
 
 Copyright (c) 2024-2025, Ravn Group
 All rights reserved.
-
