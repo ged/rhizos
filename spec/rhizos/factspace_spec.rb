@@ -2,6 +2,7 @@
 
 require_relative '../spec_helper'
 
+require 'pluggability'
 require 'securerandom'
 require 'rhizos/factspace'
 
@@ -9,14 +10,42 @@ require 'rhizos/factspace'
 RSpec.describe( Rhizos::Factspace ) do
 
 
-	it "can be started as a default instance" do
-		instance = described_class.start
+	it "can be started" do
+		begin
+			instance = described_class.start
 
-		expect( instance ).to be_a( described_class )
-		expect( instance ).to be_running
-		expect( instance.node_id ).to be_a_uuid
+			expect( instance ).to be_a( described_class )
+			expect( instance ).to be_running
+			expect( instance.node_id ).to be_a_uuid
 
-		expect { instance.stop }.to change { instance.running? }.to( false )
+			expect { instance.stop }.to change { instance.running? }.to( false )
+		ensure
+			instance&.stop
+		end
+	end
+
+
+	it "always loads the default domain" do
+		begin
+			instance = described_class.start
+
+			expect( instance.domains ).to include( an_instance_of Rhizos::Domain::Default )
+		ensure
+			instance&.stop
+		end
+	end
+
+
+	it "attempts to load any user domains specified" do
+		begin
+			instance = described_class.new( domains: %i[archery rowing] )
+
+			expect {
+				instance.start
+			}.to raise_error( Pluggability::PluginError, /couldn't find a domain/i )
+		ensure
+			instance&.stop
+		end
 	end
 
 

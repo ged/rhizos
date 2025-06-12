@@ -3,6 +3,7 @@
 require 'kuzu'
 require 'loggability'
 require 'configurability'
+require 'pluggability'
 require 'mixins'
 
 

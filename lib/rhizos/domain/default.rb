@@ -51,6 +51,9 @@ class Rhizos::Domain::Default < Rhizos::Domain
 	rel :GeoPosition, has: :Movement
 
 
+
+	
+
 end # class Rhizos::Domain::Default
 
 

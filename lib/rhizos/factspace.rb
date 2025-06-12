@@ -71,12 +71,11 @@ class Rhizos::Factspace
 		@options   = DEFAULT_OPTIONS.merge( **options ).freeze
 
 		@node_id   = nil
-		@db        = nil
 		@conn      = nil
 		@thread    = nil
-		@running   = false
+		@domains   = nil
 
-		@domains   = Set.new
+		@running   = false
 	end
 
 
@@ -93,10 +92,6 @@ class Rhizos::Factspace
 	attr_reader :node_id
 
 	##
-	# The Kuzu::Database that backs the Factspace
-	attr_reader :db
-
-	##
 	# The Kuzu::Connection object used to access the graph database
 	attr_reader :conn
 
@@ -105,22 +100,24 @@ class Rhizos::Factspace
 	attr_reader :thread
 
 	##
-	# True if the factspace main thread will continue running.
-	attr_predicate_accessor :running
-
-	##
 	# The Set of Rhizos::Domains used by this Factspace
 	attr_reader :domains
+
+	##
+	# True if the factspace main thread will continue running.
+	attr_predicate_accessor :running
 
 
 	### Start up the Factspace. Returns the main thread of execution.
 	def start
-		self.set_node_id
+		@node_id = self.class.read_node_id or
+			raise "couldn't read host's node ID file"
 
 		self.log.info "Starting %s." % [ self.node_name ]
 
-		self.connect_to_database
-		self.load_domains
+		@conn = self.connect_to_database
+		@domains = self.load_domains
+
 		self.create_local_actor
 		self.start_evolvers
 
@@ -131,21 +128,11 @@ class Rhizos::Factspace
 
 	### Stop the Factspace if it's running.
 	def stop
-		self.log.info "Stopping %s" % [ self.node_name ]
-		self.running = false
-		self.thread.join( 5 ) or self.thread.kill
-	end
-
-
-	#########
-	protected
-	#########
-
-
-	### Read the node's ID from the configured machine ID file and make sure the
-	### node's name is set.
-	def set_node_id
-		@node_id = self.class.read_node_id or raise "couldn't read host's node ID file"
+		if self.running?
+			self.log.info "Stopping %s" % [ self.node_name ]
+			self.running = false
+			self.thread.join( 5 ) or self.thread.kill
+		end
 	end
 
 
@@ -155,11 +142,40 @@ class Rhizos::Factspace
 	end
 
 
-	### Create the connetion to the Kuzu database
-	def connect_to_database
-		db_path = self.options[:db_path] or raise "No database path set in options."
-		@db = Kuzu.database( db_path )
-		@conn = @db.connect
+	### Load the domains the Factspace will use.
+	def load_domains
+		default_domains = self.load_default_domains
+		user_domains = self.load_user_domains
+
+		domains = default_domains + user_domains
+
+		schema = Rhizos::Domain.collate_schema( domains )
+		self.log.info "Installing the schema."
+		self.conn.run( schema.cypher )
+
+		return domains
+	end
+
+
+	### Load the domains that define the core functionality of the Factspace and
+	### return them as a Set.
+	def load_default_domains
+		self.log.info "Loading the default domain."
+		default_domain = Rhizos::Domain.create( :default )
+
+		return Set.new([ default_domain ])
+	end
+
+
+	### Load any domains specified by the user in the `:domains` options passed to
+	### the constructor and return them as a Set.
+	def load_user_domains
+		domain_names = Array( self.options[:domains] )
+		return domain_names.each_with_object( Set.new ) do |domain_name, domains|
+			self.log.info "Loading the `%s' domain." % [ domain_name ]
+			domain = Rhizos::Domain.create( domain_name )
+			domains.add( domain )
+		end
 	end
 
 
@@ -179,37 +195,6 @@ class Rhizos::Factspace
 	end
 
 
-	### Load the domains the Factspace will use.
-	def load_domains
-		self.load_default_domains
-		self.load_user_domains
-
-		schema = Rhizos::Domain.collate_schema( self.domains )
-		self.log.info "Installing the schema."
-		self.conn.run( schema.cypher )
-	end
-
-
-	### Load the domains that define the core functionality of the Factspace.
-	def load_default_domains
-		self.log.info "Loading the default domain."
-		default_domain = Rhizos::Domain.create( :default )
-		self.domains.add( default_domain )
-	end
-
-
-	### Load any domains specified by the user in the `:domains` options passed to
-	### the constructor.
-	def load_user_domains
-		domains = Array( self.options[:domains] )
-		domains.each do |domain_name|
-			self.log.info "Loading the `%s' domain." % [ domain_name ]
-			domain = Rhizos::Domain.create( domain_name )
-			self.domains.add( domain )
-		end
-	end
-
-
 	### For each loaded domain, load all of its evolvers.
 	def start_evolvers
 		evolvers = self.domains.flat_map( &:evolvers )
@@ -217,6 +202,14 @@ class Rhizos::Factspace
 			self.log.info "  starting %s" % [ evolver.name ]
 			evolver.start( self )
 		end
+	end
+
+
+	### Create the connetion to the Kuzu database
+	def connect_to_database
+		db_path = self.options[:db_path] or raise "No database path set in options."
+		db = Kuzu.database( db_path ) or raise "Couldn't connect to `%s'" % [ db_path ]
+		return db.connect
 	end
 
 
