@@ -1,6 +1,7 @@
 # -*- ruby -*-
 
 require 'set'
+require 'fileutils'
 require 'securerandom'
 
 require 'configurability'
@@ -9,6 +10,7 @@ require 'concurrent'
 require 'mixins'
 
 require 'rhizos' unless defined?( Rhizos )
+require 'rhizos/domain'
 
 
 class Rhizos::Factspace
@@ -16,14 +18,18 @@ class Rhizos::Factspace
 		Configurability,
 		Mixins::MethodUtilities
 	include Concurrent::Async,
-		Rhizos::Constants
+		Rhizos::Constants,
+		Mixins::Inspection
 
 
 	# The default options to use when starting
 	DEFAULT_OPTIONS = {
 		domains: [],
-		db_path: '',
+		db_path: nil,
 	}.freeze
+
+	# The domains to always load
+	DEFAULT_DOMAINS = %i[ default ]
 
 
 	# Loggability API -- use the Rhizos logger
@@ -44,26 +50,37 @@ class Rhizos::Factspace
 
 	### Return the ID for this host, or +nil+ if one could not be read.
 	def self::read_node_id
-		raw = self.machine_id_file.read or return nil
+		raw = self.machine_id_file.read&.chomp&.downcase or return nil
 		return nil if raw.empty?
 
 		normalized = raw.gsub( /\A(\h{8})(\h{4})(\h{4})(\h{4})(\h{12})\z/, '\1-\2-\3-\4-\5' )
 		return nil unless normalized.match?( UUID_PATTERN )
 
 		return normalized
+	rescue Errno::ENOENT => err
+		raise err, "while reading the machine-id file"
 	end
 
 
 	### Create a new Factspace for this host and start it. If the +block+ is given,
-	### yield the instance to the block before it's started.
+	### yield the instance to the block before it's started. Returns the new instance.
 	def self::start( **options, &block )
-		instance = new( **options )
+		instance = self.setup( **options, &block )
 		block.call( instance, **options ) if block
 		instance.start
 
 		return instance
 	end
 
+
+	### Create a new Factspace for this host and set it up, but don't start it. Returns
+	### the new instance.
+	def self::setup( **options )
+		instance = new( **options )
+		instance.setup
+
+		return instance
+	end
 
 
 	### Create a new Factspace configured with the specified +options+.
@@ -74,6 +91,8 @@ class Rhizos::Factspace
 		@conn      = nil
 		@thread    = nil
 		@domains   = nil
+		@evolvers  = nil
+		@actor     = nil
 
 		@running   = false
 	end
@@ -104,41 +123,76 @@ class Rhizos::Factspace
 	attr_reader :domains
 
 	##
+	# The UUID (as a String) of this Factspace's Actor Fact
+	attr_reader :actor
+
+	##
+	# The evolver (Rhizos::Evolver) instances started from the loaded domains
+	attr_reader :evolvers
+
+	##
 	# True if the factspace main thread will continue running.
 	attr_predicate_accessor :running
 
 
 	### Start up the Factspace. Returns the main thread of execution.
 	def start
-		@node_id = self.class.read_node_id or
-			raise "couldn't read host's node ID file"
-
-		self.log.info "Starting %s." % [ self.node_name ]
-
-		@conn = self.connect_to_database
-		@domains = self.load_domains
-
-		self.create_local_actor
+		self.setup
 		self.start_evolvers
 
+		self.log.info "Starting %s." % [ self.node_name ]
 		@thread = Thread.new( &self.method(:start_handling_events) )
 		return @thread
 	end
 
 
-	### Stop the Factspace if it's running.
+	### Stop the Factspace normally if it's running, cleaning up its database.
 	def stop
 		if self.running?
 			self.log.info "Stopping %s" % [ self.node_name ]
+			self.stop_evolvers
 			self.running = false
 			self.thread.join( 5 ) or self.thread.kill
+		else
+			self.log.info "Already stopped."
 		end
+	end
+
+
+	### The primary query interface: execute the specified +query_obj+ against the
+	### database and return the resulting tuples. If a block is given, a Kuzu::PreparedStatement
+	### is yielded to it before execution so that the block can bind variables to it.
+	def query( query_obj )
+		source = query_obj.cypher
+		if block_given?
+			statement = self.conn.prepare( source )
+			yield( statement )
+			return statement.execute {|res| res.tuples }
+		else
+			return self.conn.query( source ) {|res| res.tuples }
+		end
+	rescue Kuzu::QueryError => err
+		self.log.error "%p in query `%s`: %s" % [ err.class, source, err.message ]
+		raise
 	end
 
 
 	### Return the Factspace's node name, which is based on its UUID.
 	def node_name
 		return "factspace-%s" % [ self.node_id ]
+	end
+
+
+	### Ensure the Factspace is set up for running.
+	def setup
+		# Or-equal so this method is idempotent
+		@node_id  ||= self.class.read_node_id or
+			raise "couldn't read host's node ID file"
+
+		@conn     ||= self.connect_to_database
+		@domains  ||= self.load_domains
+		@actor    ||= self.create_local_actor
+		@evolvers ||= self.load_evolvers
 	end
 
 
@@ -149,21 +203,102 @@ class Rhizos::Factspace
 
 		domains = default_domains + user_domains
 
-		schema = Rhizos::Domain.collate_schema( domains )
-		self.log.info "Installing the schema."
-		self.conn.run( schema.cypher )
+		if Rhizos::Domain.schema_is_installed?( self )
+			self.check_schema( domains )
+		else
+			self.install_schema( domains )
+		end
 
 		return domains
+	end
+
+
+	### Sanity-check the schema of the current database against the list of +domains+. If
+	### any are missing from the database, missing from the listed +domains+, or have
+	### mismatched versions, raises an error.
+	def check_schema( domains )
+		domain_info = Rhizos::Domain.schema_info_hash( self )
+
+		self.check_schema_tables( domains, domain_info )
+		self.check_schema_versions( domains, domain_info )
+	end
+
+
+	### Compare the specified +domains+ with the +domain_info+ of an existing database
+	### and raise an error if they indicate that different domains are loaded.
+	def check_schema_tables( domains, domain_info )
+		installed_domains = domain_info.keys.to_set
+		loaded_domains = domains.map( &:name ).to_set
+
+		if installed_domains.proper_subset?( loaded_domains )
+			missing = loaded_domains - installed_domains
+			raise Rhizos::SchemaError,
+				"existing database is missing schema for some domains: %s" % [ missing.to_a ]
+
+		elsif loaded_domains.proper_subset?( installed_domains )
+			extra = installed_domains - loaded_domains
+			raise Rhizos::SchemaError,
+				"existing database has domains that are not loaded: %s" % [ extra.to_a ]
+		end
+	end
+
+
+	### Compare the versions of the specified +domains+ with the +domain_info+ of an
+	### existing database and raise an error if they indicate that they have incompatible
+	### versions.
+	def check_schema_versions( domains, domain_info )
+		incompatible = []
+
+		domains.each do |domain|
+			previous_version = domain_info[ domain.name ]
+
+			# Semver-checking?
+			unless domain.version == previous_version
+				incompatible << "  %s: %s vs. %s" %
+					[ domain.name, previous_version, domain.version ]
+			end
+		end
+
+		unless incompatible.empty?
+			raise Rhizos::SchemaError,
+				"existing database has incompatible versions: %s\n" % [ incompatible.join("\n  ") ]
+		end
+	end
+
+
+	### Install the schema for the specified +domains+ (an Array of Rhizos::Domain objects)
+	def install_schema( domains )
+		self.log.info "Installing the schema in domains: %p." % [ domains ]
+		self.conn.run( DOMAIN_INFO_TABLE_SCHEMA )
+
+		create_stmt = self.conn.prepare( ADD_DOMAIN_INFO_QUERY )
+		domains.each do |domain|
+			self.log.info "Installing the %p domain at version %p" % [ domain.name, domain.version ]
+			create_stmt.execute!( name: domain.name, version: domain.version )
+		end
+
+		query = Rhizos::Domain.collate_schema( domains )
+		self.conn.run( query.cypher )
+	end
+
+
+	### Remove the data from all the loaded domains.
+	def unload_domains
+		query = Rhizos::Domain.remove_schema( self.domains )
+		self.conn.run( query.cypher )
+
+		return true
 	end
 
 
 	### Load the domains that define the core functionality of the Factspace and
 	### return them as a Set.
 	def load_default_domains
-		self.log.info "Loading the default domain."
-		default_domain = Rhizos::Domain.create( :default )
+		self.log.info "Loading the default domains."
 
-		return Set.new([ default_domain ])
+		return DEFAULT_DOMAINS.map do |domain_name|
+			Rhizos::Domain.create( domain_name )
+		end
 	end
 
 
@@ -171,10 +306,10 @@ class Rhizos::Factspace
 	### the constructor and return them as a Set.
 	def load_user_domains
 		domain_names = Array( self.options[:domains] )
-		return domain_names.each_with_object( Set.new ) do |domain_name, domains|
+
+		return domain_names.map do |domain_name|
 			self.log.info "Loading the `%s' domain." % [ domain_name ]
-			domain = Rhizos::Domain.create( domain_name )
-			domains.add( domain )
+			Rhizos::Domain.create( domain_name )
 		end
 	end
 
@@ -182,33 +317,58 @@ class Rhizos::Factspace
 	### Create or update the local Actor that represents this factspace.
 	def create_local_actor
 		self.log.info "Creating local Actor node"
-		stmt = self.conn.prepare( <<~END_OF_QUERY )
-			MERGE (a:Actor {id: uuid($id), isLocal: true})-[i:IS_A]->(f:Fact {confidence: 100})
-			ON MATCH SET f.updatedAt = current_timestamp()
-			RETURN f.id
-		END_OF_QUERY
+		actor_query = Rhizos.query( CREATE_LOCAL_ACTOR_QUERY )
 
-		result = stmt.execute( id: self.node_id )
-		self.log.debug "Result: %s" % [ result.to_s ]
+		tuples = self.query( actor_query ) do |stmt|
+			self.log.debug "Creating actor node %s" % [ self.node_id ]
+			stmt.bind( id: self.node_id )
+		end
 
-		return result.to_a.first
+		return tuples.first['f.id']
 	end
 
 
 	### For each loaded domain, load all of its evolvers.
+	def load_evolvers
+		self.log.info "Loading evolvers from %d domains." % [ self.domains.size ]
+		return self.domains.flat_map( &:evolvers )
+	end
+
+
+	### Start the currently-loaded Evolvers.
 	def start_evolvers
-		evolvers = self.domains.flat_map( &:evolvers )
-		evolvers.each do |evolver|
-			self.log.info "  starting %s" % [ evolver.name ]
+		self.log.info "Starting evolvers."
+		self.evolvers.each do |evolver|
+			self.log.info "  starting %s" % [ evolver.plugin_name ]
 			evolver.start( self )
 		end
 	end
 
 
+	### Stop all the currently-running evolvers.
+	def stop_evolvers
+		self.log.info "Stopping evolvers."
+		self.evolvers.each do |evolver|
+			self.log.info "  stopping %s" % [ evolver.plugin_name ]
+			evolver.stop( self )
+		end
+	end
+
+
+	### Return the path to the database as a Pathname, or `nil` if it's an in-memory
+	### database.
+	def db_path
+		pathname = self.options[:db_path]
+		return nil if pathname.nil? || pathname == ''
+
+		return Pathname( pathname ).expand_path
+	end
+
+
 	### Create the connetion to the Kuzu database
 	def connect_to_database
-		db_path = self.options[:db_path] or raise "No database path set in options."
-		db = Kuzu.database( db_path ) or raise "Couldn't connect to `%s'" % [ db_path ]
+		path = self.db_path || ''
+		db = Kuzu.database( path ) or raise "Couldn't connect to `%s'" % [ path ]
 		return db.connect
 	end
 
@@ -235,11 +395,14 @@ class Rhizos::Factspace
 	### Inspection mixin API -- provide the details for a string represnetation
 	### of the object suitable for human debugging.
 	def inspect_details
-		return "%s [%p] (%srunning)" % [
-			self.node_name,
-			self.db,
-			self.running? ? '' : 'not ',
-		]
+		if self.running?
+			return "%s [%p] (running)" % [
+				self.node_name,
+				self.conn,
+			]
+		else
+			return "(not running)"
+		end
 	end
 
 end # class Rhizos::Factspace

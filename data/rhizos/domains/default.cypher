@@ -1,8 +1,20 @@
+/*
+ * Schema info
+ */
+
+CREATE NODE TABLE RhizosDomain (
+	id SERIAL PRIMARY KEY,
+	name STRING,
+	version STRING
+);
+COMMENT ON TABLE RhizosDomain IS 'Loaded Rhizos domains';
 
 
 /*
  * Rhizos domain (middle ontology)
  */
+
+CREATE (:RhizosDomain {name: 'default', version: '0.1.0'});
 
 CREATE NODE TABLE Fact (
     id UUID DEFAULT gen_random_uuid(),
@@ -35,6 +47,8 @@ COMMENT ON TABLE Actor IS 'system or entity that creates Facts';
 
 CREATE NODE TABLE GeoPosition (
     id UUID DEFAULT gen_random_uuid(),
+	label STRING,
+    ordinal INT32,
     latitude FLOAT,
     longitude FLOAT,
     accuracy INT8,
@@ -52,9 +66,20 @@ CREATE NODE TABLE Movement (
 );
 COMMENT ON TABLE Movement IS 'movement vector of a geo position';
 
+
+CREATE NODE TABLE GeoArea (
+    id UUID DEFAULT gen_random_uuid(),
+    label STRING,
+    PRIMARY KEY (id)
+);
+COMMENT ON TABLE GeoArea IS 'area described by a set of geo positions';
+
+
 /*
  * Tactical Domain -- Helios
  */
+
+CREATE (:RhizosDomain {name: 'tactical', version: '0.1.0'});
 
 CREATE NODE TABLE Communication (
     id UUID DEFAULT gen_random_uuid(),
@@ -89,6 +114,7 @@ CREATE REL TABLE HAS_A (
     from Communication to ISRRequest,
     from ISRRequest to GeoPosition,
     from GeoPosition to Movement,
+    from GeoArea to GeoPosition,
     label STRING,
     ordinal INT32,
     MANY_ONE

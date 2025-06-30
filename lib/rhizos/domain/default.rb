@@ -7,52 +7,43 @@ require 'rhizos/domain' unless defined?( Rhizos::Domain )
 
 class Rhizos::Domain::Default < Rhizos::Domain
 
+	version Rhizos::VERSION
+
+
+	rel :IS_A, "type-of relations"
+
+	rel :HAS_A, "composition relations" do
+		string :label
+		int32 :ordinal
+
+		many_one
+	end
+
 
 	type :Fact, "The base unit of knowledge" do
-		timestamp :created_at, default: 'current_timestamp()'
-		timestamp :updated_at
+		timestamp :createdAt, default: :current_timestamp
+		timestamp :updatedAt
 
 		int8 :confidence, default: 0
 	end
 
 
 	type :Lifetime, "Interval during which a Fact is current" do
-		timestamp :begins_at
-		timestamp :ends_at
+		timestamp :beginsAt
+		timestamp :endsAt
 		string :description
 	end
 
-	rel :Fact, has: :Lifetime
+	rel :HAS_A, from: :Fact, to: :Lifetime
 
 
-	type :Actor, "system that created a Fact" do
+	type :Actor, "system that created a Fact", is_a: :Fact do
 		string :identifier
-		boolean :is_local, default: true
+		boolean :isLocal, default: true
 	end
 
-	rel :Fact, has: :Actor
+	rel :HAS_A, from: :Fact, to: :Actor
 
-
-	type :GeoPosition, "geographic position with accuracy" do
-		string :label
-		int32 :ordinal
-		float :latitude
-		float :longitude
-		float :hae
-		int8 :accuracy
-	end
-
-
-	type :Movement, "vector of change of a geo position" do
-	    float :direction    # In degrees
-	    float :velocity     # In Km/Hour
-	end
-
-	rel :GeoPosition, has: :Movement
-
-
-
-	
 
 end # class Rhizos::Domain::Default
 

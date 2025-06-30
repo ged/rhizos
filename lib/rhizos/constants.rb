@@ -6,6 +6,10 @@ require 'rhizos' unless defined?( Rhizos )
 # Useful constants for Rhizos systems.
 module Rhizos::Constants
 
+	#
+	# General constants
+	#
+
 	# Pattern for matching UUIDs.
 	UUID_PATTERN = %r{
 		\A
@@ -14,5 +18,95 @@ module Rhizos::Constants
 		-\h{12}
 		\z
 	}mx
+
+	# Pattern for matching semantic versions. Not strict.
+	SEMVER_VERSION_PATTERN = %r{
+		\A
+		(?<major>\d+)
+		\.
+		(?<minor>\d+)
+		\.
+		(?<patch>\d+)
+		(?:-
+			(?<prerelease>
+				[a-z0-9-]+
+				(?:\.[a-z0-9-]+)*
+			)
+		)?
+		(?:\+
+			(?<buildnum>
+				[a-z0-9-]+
+				(?:\.[a-z0-9-]+)*
+			)
+		)?
+		\z
+	}xi
+
+	#
+	# Schema info constants
+	#
+
+	# The name of the table which holds the loaded domains and their versions
+	DOMAIN_INFO_TABLE = 'RhizosDomain'
+
+
+	#
+	# Cypher Queries
+	#
+
+	# A query
+	SHOW_TABLES_QUERY = 'CALL show_tables() RETURN *'
+
+
+	# The Cypher query used to create the schema info table
+	DOMAIN_INFO_TABLE_SCHEMA = <<~END_OF_QUERY
+		CREATE NODE TABLE #{DOMAIN_INFO_TABLE} (
+			id SERIAL PRIMARY KEY,
+			name STRING,
+			version STRING
+		);
+		COMMENT ON TABLE #{DOMAIN_INFO_TABLE} IS 'Loaded Rhizos domains'
+	END_OF_QUERY
+
+
+	# The Cypher source used to add a domain to the schema info table
+	ADD_DOMAIN_INFO_QUERY = <<~END_OF_QUERY
+		CREATE (:#{DOMAIN_INFO_TABLE} {name: $name, version: $version});
+	END_OF_QUERY
+
+
+	# The Cypher source used to alter the version of a loaded domain
+	SET_DOMAIN_VERSION_QUERY = <<~END_OF_QUERY
+		MATCH (d:#{DOMAIN_INFO_TABLE})
+		WHERE d.name = $name
+		SET d.version = $version
+		RETURN d.*;
+	END_OF_QUERY
+
+
+	# The Cypher query used to create the local Actor Fact
+	CREATE_LOCAL_ACTOR_QUERY = <<~END_OF_QUERY
+		MERGE (a:Actor {id: uuid($id), isLocal: true})
+			-[i:IS_A]->(f:Fact {confidence: 100})
+			-[l:HAS_A]->(life:Lifetime { description: "Actor is running" })
+		ON MATCH SET
+			f.updatedAt = current_timestamp(),
+			life.beginsAt = current_timestamp()
+		RETURN f.id
+	END_OF_QUERY
+
+
+	# The Cypher query used to create an entry in the schema info table
+	DOMAIN_INFO_CREATE_QUERY = <<~END_OF_QUERY
+		CREATE (e:#{DOMAIN_INFO_TABLE} {name: $name, version: $version})
+	END_OF_QUERY
+
+
+	# The Cypher query used to select entries in the schema info table, returned
+	# as tuples of `name`, `version`.
+	DOMAIN_INFO_MATCH_QUERY = <<~END_OF_QUERY
+		MATCH (e:#{DOMAIN_INFO_TABLE}) RETURN e.name AS name, e.version AS version;
+	END_OF_QUERY
+
 
 end # module Rhizos::Constants

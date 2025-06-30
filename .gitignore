@@ -1,7 +1,9 @@
 coverage/
+factspace/
 .esproj/
 *.yml
 docs/
 spec/\.status
 *.lock
 .ruby-libs
+history.txt
