@@ -5,7 +5,9 @@ require 'loggability'
 
 
 require 'rhizos' unless defined?( Rhizos )
+require 'rhizos/refinements'
 
+using Rhizos::StringRefinements
 
 
 class Rhizos::Evolver
@@ -16,33 +18,33 @@ class Rhizos::Evolver
 	log_to :rhizos
 
 	# Pluggability API -- where to find pluggable evolvers
-	plugin_paths 'rhizos/evolver'
+	plugin_prefixes 'rhizos/evolver'
 
 
 
-	### Start evolving the Facts this Evolver operates on.
+	### Start evolving the Facts in the given +factspace+. You can override this to
+	### register timers to interact with the +factspace+, set up any outside connections,
+	### etc.
 	def start( factspace )
-
-		# a_query = Rhizos::SequelStyleQuery.new( "select thing where $variable" ) do |statement|
-		# 	statement.bind( variable: Time.now )
-		# end
-		# another_query = Rhizos::SequelStyleQuery.
-		# 	new( "select other_thing where $foo", &self.method(:prepare_other_query) )
-		#
-		# # Tick-based evolver
-		# factspace.register_query( self, a_query )
-		# factspace.register_query( self, another_query )
-		#
-		# # Custom timer based evolver
-		# a_timer = factspace.register_timed_query( self, a_query, interval )
-		# factspace.cancel_timed_query( a_timer )
+		# No-op by default
 	end
 
 
-	### Run the evolver on the given +facts+, which are the current results of the
-	### query registered when it was started.
-	def run( facts )
-		return facts
+	### Stop evolving Facts in the +factspace+. All the +factspace+'s timers will have
+	### stopped already, so you only need to override this method if you need some
+	### specific cleanup to happen at shutdown.
+	def stop( factspace )
+		# No-op by default
+	end
+
+
+	### Return the simplified name of the evolver; this is the same as the Pluggability
+	### #plugin_name by default.
+	def name
+		name = self.class.name.sub( /\A.*::(\w+)/, '\\1' )
+		name.sub!( /\A([a-z]\w*)\W.*\z/i, '\1' )
+
+		return name.uncamelcase.downcase
 	end
 
 end # class Rhizos::Evolver

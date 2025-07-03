@@ -6,6 +6,7 @@ require 'simplecov' if ENV['COVERAGE']
 require 'rspec'
 require 'rspec/matchers'
 
+require 'pluggability'
 require 'securerandom'
 require 'loggability/spechelpers'
 

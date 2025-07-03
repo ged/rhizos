@@ -41,6 +41,8 @@ module Rhizos
 	autoload :DomainType, 'rhizos/domain_type'
 	autoload :DomainRelation, 'rhizos/domain_relation'
 	autoload :DomainPropertyDSL, 'rhizos/domain_property_dsl'
+	autoload :Evolver, 'rhizos/evolver'
+	autoload :Timer, 'rhizos/timer'
 
 	autoload :Error, 'rhizos/exceptions'
 	autoload :DomainError, 'rhizos/exceptions'

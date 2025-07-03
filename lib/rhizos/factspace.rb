@@ -11,6 +11,9 @@ require 'mixins'
 
 require 'rhizos' unless defined?( Rhizos )
 require 'rhizos/domain'
+require 'rhizos/refinements'
+
+using Rhizos::NumericRefinements
 
 
 class Rhizos::Factspace
@@ -20,7 +23,6 @@ class Rhizos::Factspace
 	include Concurrent::Async,
 		Rhizos::Constants,
 		Mixins::Inspection
-
 
 	# The default options to use when starting
 	DEFAULT_OPTIONS = {
@@ -62,22 +64,22 @@ class Rhizos::Factspace
 	end
 
 
+	### Create a new Factspace for this host and set it up, but don't start it. Returns
+	### the new instance.
+	def self::setup( **options )
+		instance = new( **options )
+		instance.setup
+
+		return instance
+	end
+
+
 	### Create a new Factspace for this host and start it. If the +block+ is given,
 	### yield the instance to the block before it's started. Returns the new instance.
 	def self::start( **options, &block )
 		instance = self.setup( **options, &block )
 		block.call( instance, **options ) if block
 		instance.start
-
-		return instance
-	end
-
-
-	### Create a new Factspace for this host and set it up, but don't start it. Returns
-	### the new instance.
-	def self::setup( **options )
-		instance = new( **options )
-		instance.setup
 
 		return instance
 	end
@@ -93,6 +95,7 @@ class Rhizos::Factspace
 		@domains   = nil
 		@evolvers  = nil
 		@actor     = nil
+		@timers    = nil
 
 		@running   = false
 	end
@@ -131,6 +134,10 @@ class Rhizos::Factspace
 	attr_reader :evolvers
 
 	##
+	# a Set of registered periodic Rhizos::Timer objects.
+	attr_reader :timers
+
+	##
 	# True if the factspace main thread will continue running.
 	attr_predicate_accessor :running
 
@@ -139,9 +146,12 @@ class Rhizos::Factspace
 	def start
 		self.setup
 		self.start_evolvers
+		self.start_timers
+		self.running = true
 
 		self.log.info "Starting %s." % [ self.node_name ]
 		@thread = Thread.new( &self.method(:start_handling_events) )
+
 		return @thread
 	end
 
@@ -150,6 +160,7 @@ class Rhizos::Factspace
 	def stop
 		if self.running?
 			self.log.info "Stopping %s" % [ self.node_name ]
+			self.stop_timers
 			self.stop_evolvers
 			self.running = false
 			self.thread.join( 5 ) or self.thread.kill
@@ -193,6 +204,28 @@ class Rhizos::Factspace
 		@domains  ||= self.load_domains
 		@actor    ||= self.create_local_actor
 		@evolvers ||= self.load_evolvers
+		@timers   ||= Set.new
+	end
+
+
+	### Register a timer for callback execution at +interval+.
+	### If the factspace is running, the callback is executed immediately.
+	def add_periodic_timer( interval=60.seconds, &callback )
+		timer = Rhizos::Timer.new( interval, &callback )
+
+		self.timers.add( timer )
+		timer.start( fire_now: true ) if self.running?
+
+		return timer
+	end
+
+
+	### Un-register the specified +timer+ and cancel it.
+	def cancel_periodic_timer( timer )
+		raise "unknown timer %p" % [ timer ] unless self.timers.include?( timer )
+
+		self.timers.delete( timer )
+		timer.stop
 	end
 
 
@@ -328,18 +361,30 @@ class Rhizos::Factspace
 	end
 
 
+	### Get an evolver by its name. Returns `nil` if no such evolver is loaded.
+	def get_evolver( name )
+		return self.evolvers[ name.to_s ]
+	end
+
+
 	### For each loaded domain, load all of its evolvers.
 	def load_evolvers
 		self.log.info "Loading evolvers from %d domains." % [ self.domains.size ]
-		return self.domains.flat_map( &:evolvers )
+		return self.domains.each_with_object( {} ) do |domain, hash|
+			domain.evolvers.each do |evolver|
+				name = evolver.name
+				self.log.info "  loaded the %p evolver from the %s domain" % [ name, domain ]
+				hash[ name ] = evolver
+			end
+		end
 	end
 
 
 	### Start the currently-loaded Evolvers.
 	def start_evolvers
 		self.log.info "Starting evolvers."
-		self.evolvers.each do |evolver|
-			self.log.info "  starting %s" % [ evolver.plugin_name ]
+		self.evolvers.each do |name, evolver|
+			self.log.info "  starting %s" % [ name ]
 			evolver.start( self )
 		end
 	end
@@ -348,10 +393,24 @@ class Rhizos::Factspace
 	### Stop all the currently-running evolvers.
 	def stop_evolvers
 		self.log.info "Stopping evolvers."
-		self.evolvers.each do |evolver|
-			self.log.info "  stopping %s" % [ evolver.plugin_name ]
+		self.evolvers.each do |name, evolver|
+			self.log.info "  stopping %s" % [ name ]
 			evolver.stop( self )
 		end
+	end
+
+
+	### Cancel running periodic timers.
+	def stop_timers
+		self.log.info "Stopping %d periodic timers." % [ self.timers.size ]
+		self.timers.each( &:stop )
+	end
+
+
+	### Begin all registered periodic timers.
+	def start_timers
+		self.log.info "Starting %d periodic timers." % [ self.timers.size ]
+		self.timers.each( &:start )
 	end
 
 
@@ -378,8 +437,6 @@ class Rhizos::Factspace
 		Thread.current.abort_on_exception = true
 		Thread.current.name = "Factspace event handler"
 		start_time = Process.clock_gettime( Process::CLOCK_MONOTONIC )
-
-		self.running = true
 
 		self.log.info "Started handling events."
 		while self.running?

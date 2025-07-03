@@ -87,12 +87,13 @@ module Rhizos::Constants
 	# The Cypher query used to create the local Actor Fact
 	CREATE_LOCAL_ACTOR_QUERY = <<~END_OF_QUERY
 		MERGE (a:Actor {id: uuid($id), isLocal: true})
-			-[i:IS_A]->(f:Fact {confidence: 100})
+			-[i:IS_A]->(fact:Fact {confidence: 100})
 			-[l:HAS_A]->(life:Lifetime { description: "Actor is running" })
-		ON MATCH SET
-			f.updatedAt = current_timestamp(),
+		ON CREATE SET
 			life.beginsAt = current_timestamp()
-		RETURN f.id
+		ON MATCH SET
+			fact.updatedAt = current_timestamp()
+		RETURN fact.id
 	END_OF_QUERY
 
 

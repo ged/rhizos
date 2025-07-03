@@ -45,6 +45,10 @@ class Rhizos::Domain::Default < Rhizos::Domain
 	rel :HAS_A, from: :Fact, to: :Actor
 
 
+	evolver :LifetimeExpirer,
+		"expire Facts with no Lifetime, remove Lifetimes that have ended"
+
+
 end # class Rhizos::Domain::Default
 
 

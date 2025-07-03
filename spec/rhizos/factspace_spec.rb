@@ -7,9 +7,16 @@ require 'pluggability'
 require 'securerandom'
 require 'rhizos/factspace'
 require 'rhizos/constants'
+require 'rhizos/refinements'
 
+using Rhizos::NumericRefinements
 
 RSpec.describe( Rhizos::Factspace ) do
+
+
+	after( :each ) do
+		GC.start # Try to ensure databases get cleaned up
+	end
 
 
 	# Set by the spec helper
@@ -175,6 +182,118 @@ RSpec.describe( Rhizos::Factspace ) do
 			expect( described_class.read_node_id ).to be_nil
 		end
 
+	end
+
+
+	describe "evolvers" do
+
+		it "allows access to its evolvers after it starts up" do
+			instance = described_class.setup
+
+			# An evolver in the default domain
+			evolver = instance.get_evolver( :lifetime_expirer )
+
+			expect( evolver ).to be_an_instance_of( Rhizos::Evolver::LifetimeExpirer )
+		end
+
+
+		it "returns nil for a evolver if none exists with the requested name" do
+			instance = described_class.setup
+
+			expect( instance.get_evolver(:deer_petter) ).to be_nil
+		end
+
+	end
+
+
+	describe "timers" do
+
+		it "allows registration of a periodic callback as a timer" do
+			instance = described_class.setup
+
+			it_was_called = false
+			callback = ->( * ) {
+				it_was_called = true
+			}
+
+			timer = instance.add_periodic_timer( 15.seconds, &callback )
+
+			expect( timer ).to be_a( Rhizos::Timer )
+			expect( timer.interval ).to eq( 15 )
+			expect { timer.fire }.to change { it_was_called }.to( true )
+		end
+
+
+		it "starts a timer immediately if registered with a running Factspace" do
+			begin
+				instance = described_class.start
+
+				it_was_called = false
+				callback = ->( * ) {
+					it_was_called = true
+				}
+
+				expect {
+					 instance.add_periodic_timer( 15.seconds, &callback )
+					 sleep 0.1
+				}.to change {
+					it_was_called
+				}.to( true )
+			ensure
+				instance&.stop
+			end
+		end
+
+
+		it "allows cancellation of a timer" do
+			instance = described_class.setup
+
+			timer = instance.add_periodic_timer( 15.seconds ) {}
+			expect( timer ).to be_a( Rhizos::Timer )
+
+			expect {
+				instance.cancel_periodic_timer( timer )
+			}.to change { instance.timers.count }.by( -1 )
+
+			expect( timer ).to be_stopped
+		end
+
+
+		it "starts all registered timers at startup" do
+			instance = described_class.setup
+
+			timer1 = instance.add_periodic_timer( 1 ) {}
+			timer2 = instance.add_periodic_timer( 1 ) {}
+
+			expect( timer1 ).to be_stopped
+			expect( timer2 ).to be_stopped
+
+			begin
+				instance.start
+				expect( timer1 ).to be_started
+				expect( timer2 ).to be_started
+			ensure
+				instance.stop
+			end
+		end
+
+
+		it "cancels all registered timers when it stops" do
+			begin
+				instance = described_class.start
+
+				timer1 = instance.add_periodic_timer( 1 ) {}
+				timer2 = instance.add_periodic_timer( 1 ) {}
+
+				expect( timer1 ).to be_started
+				expect( timer2 ).to be_started
+			ensure
+				instance&.stop
+			end
+
+			expect( timer1 ).to be_stopped
+			expect( timer2 ).to be_stopped
+		end
 	end
 
 end

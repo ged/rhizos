@@ -37,6 +37,8 @@ class Rhizos::Domain
 			hash[ name ] = Rhizos::DomainRelation.new( name )
 		end
 
+		subclass.singleton_attr_accessor( :evolvers )
+		subclass.evolvers = {}
 	end
 
 
@@ -60,7 +62,11 @@ class Rhizos::Domain
 	### Declare a node type for the domain with the given +name+ and +description+. If the `:is`
 	### option is given, register an :IS_A REL for the type to the specified type.
 	def self::type( name, description, is_a: nil, &block )
-		source = self.name ? Object.const_source_location( self.name ) : "(unknown)"
+		source = if self.name&.match?( /\A[:\w+]\z/ )
+				Object.const_source_location( self.name )
+			else
+				"(unknown)"
+			end
 		type = Rhizos::DomainType.new( name, description, source: source )
 		type.instance_eval( &block ) if block
 
@@ -87,6 +93,14 @@ class Rhizos::Domain
 		end
 	end
 	singleton_method_alias :rel, :relation
+
+
+	### Declare that an Evolver with the specified +name+ should be started for a Factspace
+	### using this domain.
+	def self::evolver( name, description=nil, **options )
+		evolver_class = Rhizos::Evolver.get_subclass( name )
+		self.evolvers[ name ] = evolver_class
+	end
 
 
 	### Returns +true+ if there is a Rhizos schema installed in the Factspace's database
@@ -165,11 +179,19 @@ class Rhizos::Domain
 	end
 
 
-	### Return any Rhizos::Evolvers provided by this domain. Returns an empty Array
-	### by default.
-	def evolvers
-		return []
+	### Create a new instance of the Domain.
+	def initialize
+		@evolvers = self.class.evolvers.values.map( &:new )
 	end
+
+
+	######
+	public
+	######
+
+	##
+	# Instances of Rhizos::Evolvers declared by the domain.
+	attr_reader :evolvers
 
 
 	### Return the simplified name of the domain; this is the same as the Pluggability
