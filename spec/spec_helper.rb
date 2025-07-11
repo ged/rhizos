@@ -15,7 +15,6 @@ require 'rhizos'
 
 module Rhizos::SpecHelpers
 	extend Loggability
-	include Rhizos::Constants
 
 
 	# Loggability API -- use the Rhizos logger
@@ -109,12 +108,32 @@ module Rhizos::SpecHelpers
 	end
 
 
+	RSpec::Matchers.define( :order ) do |member|
+		match do |collection|
+			expect( collection ).to include( member )
+
+			if before_member
+				expect( collection.index(member) ).to be < collection.index( before_member )
+			elsif after_member
+				expect( collection.index(member) ).to be > collection.index( after_member )
+			else
+				expect( collection.sort ).to eq( collection )
+			end
+		end
+
+		chain :before, :before_member
+		chain :after, :after_member
+	end
+
+
 end # module Rhizos::SpecHelpers
 
 
 
 ### Mock with RSpec
 RSpec.configure do |config|
+	include Rhizos::Constants
+
 	config.mock_with( :rspec ) do |mock|
 		mock.syntax = :expect
 	end

@@ -9,6 +9,9 @@ class Rhizos::Domain::Geo < Rhizos::Domain
 
 	version '0.0.1'
 
+	prefix 'geo'
+
+
 	type :GeoPosition, "geographic position with accuracy" do
 		string :label
 		int32 :ordinal

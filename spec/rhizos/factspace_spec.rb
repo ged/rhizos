@@ -296,5 +296,89 @@ RSpec.describe( Rhizos::Factspace ) do
 		end
 	end
 
+
+	describe "high-level convenience methods" do
+
+		it "can return an Array of Fact nodes" do
+			instance = described_class.setup
+
+			instance.conn.run( <<~END_OF_QUERY )
+				CREATE (:Actor {identifier: "a short-lived system"})
+					-[:IS_A]->(:Fact {confidence: 100})
+					-[:HAS_A]->(:Lifetime {
+						description: "I only run for a few seconds",
+						beginsAt: current_timestamp(),
+						endsAt: current_timestamp() + INTERVAL('5 seconds')
+					});
+				CREATE (:Fact {confidence: 100})
+					-[l:HAS_A]->(life:Lifetime { description: "I last until deleted" });
+				CREATE (:Fact {confidence: 20});
+			END_OF_QUERY
+
+			nodes = instance.facts
+
+			expect( nodes ).to be_an( Array ).and( all be_a(Kuzu::Node) )
+
+			nodes.each do |node|
+				expect( node.properties ).to include( :id, :confidence )
+				expect( node[:id] ).to be_a_uuid
+				expect( node[:confidence] ).to be_an( Integer )
+			end
+		end
+
+
+		it "can return an Array of Lifetime nodes" do
+			instance = described_class.setup
+
+			instance.conn.run( <<~END_OF_QUERY )
+				CREATE (:Actor {identifier: "a short-lived system"})
+					-[:IS_A]->(:Fact {confidence: 100})
+					-[:HAS_A]->(:Lifetime {
+						description: "I only run for a few seconds",
+						beginsAt: current_timestamp(),
+						endsAt: current_timestamp() + INTERVAL('5 seconds')
+					});
+				CREATE (:Fact {confidence: 100})
+					-[:HAS_A]->(:Lifetime { description: "I last until deleted" });
+			END_OF_QUERY
+
+			nodes = instance.lifetimes
+
+			expect( nodes ).to be_an( Array ).and( all be_a(Kuzu::Node) )
+
+			nodes.each do |node|
+				expect( node.properties ).to include( :id, :beginsAt, :endsAt, :description )
+				expect( node[:id] ).to be_a_uuid
+			end
+		end
+
+
+		it "can return an Array of Actor nodes" do
+			instance = described_class.setup
+
+			instance.conn.run( <<~END_OF_QUERY )
+				CREATE (:Actor {identifier: "a short-lived system"})
+					-[:IS_A]->(:Fact {confidence: 100})
+					-[:HAS_A]->(:Lifetime {
+						description: "I only run for a few seconds",
+						beginsAt: current_timestamp(),
+						endsAt: current_timestamp() + INTERVAL('5 seconds')
+					});
+				CREATE (:Actor {identifier: "Acme Drone FR2277"})
+					-[:HAS_A]->(:Lifetime { description: "I last until I'm powered off" });
+			END_OF_QUERY
+
+			nodes = instance.actors
+
+			expect( nodes ).to be_an( Array ).and( all be_a(Kuzu::Node) )
+
+			nodes.each do |node|
+				expect( node.properties ).to include( :id, :identifier, :isLocal )
+				expect( node[:id] ).to be_a_uuid
+			end
+		end
+
+	end
+
 end
 

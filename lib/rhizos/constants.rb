@@ -1,5 +1,6 @@
 # -*- ruby -*-
 
+require 'uri'
 require 'rhizos' unless defined?( Rhizos )
 
 
@@ -51,17 +52,40 @@ module Rhizos::Constants
 
 
 	#
+	# Domain constants
+	#
+
+	# The URI prefix used when deriving a domain's default or shorthand prefix
+	DEFAULT_PREFIX_URI = URI( 'https://rhizos.info/' )
+
+	# The URI of the default Rhizos domain
+	DEFAULT_DOMAIN_URI = DEFAULT_PREFIX_URI + 'default'
+
+
+	#
 	# Cypher Queries
 	#
 
-	# A query
+	# A query that lists all tables in the current schema
 	SHOW_TABLES_QUERY = 'CALL show_tables() RETURN *'
+
+
+	# A query that returns tuples for each Fact
+	MATCH_FACTS_QUERY = 'MATCH (f:Fact) RETURN f'
+
+
+	# A query that returns tuples for each Lifetime
+	MATCH_LIFETIMES_QUERY = 'MATCH (l:Lifetime) RETURN l'
+
+
+	# A query that returns tuples for each Actor
+	MATCH_ACTORS_QUERY = 'MATCH (a:Actor) RETURN a'
 
 
 	# The Cypher query used to create the schema info table
 	DOMAIN_INFO_TABLE_SCHEMA = <<~END_OF_QUERY
 		CREATE NODE TABLE #{DOMAIN_INFO_TABLE} (
-			id SERIAL PRIMARY KEY,
+			id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
 			name STRING,
 			version STRING
 		);

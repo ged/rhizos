@@ -9,6 +9,8 @@ class Rhizos::Domain::Default < Rhizos::Domain
 
 	version Rhizos::VERSION
 
+	prefix 'default'
+
 
 	rel :IS_A, "type-of relations"
 

@@ -11,31 +11,46 @@ RSpec.describe( Rhizos::Domain ) do
 
 	before( :each ) do
 		@loaded_domains = described_class.derivatives.dup
+		@domain_prefixes = described_class.by_prefix.dup
 	end
 
 	after( :each ) do
+		described_class.reset_domain_lookup
+		described_class.by_prefix.replace( @domain_prefixes )
 		described_class.derivatives.replace( @loaded_domains )
 	end
 
 
-	let( :social_domain_class ) do
-		klass = Class.new( described_class )
-		klass.set_temporary_name( "Rhizos::Domain::Social (test class)" )
-		return klass
+	let!( :social_domain_class ) do
+		return Class.new( described_class ) do
+			set_temporary_name( "Rhizos::Domain::Social (test class)" )
+		end
 	end
 	let( :social_domain ) { social_domain_class.new }
 
 
-	let( :careers_domain_class ) do
-		klass = Class.new( described_class )
-		klass.set_temporary_name( "Rhizos::Domain::Careers (test class)" )
-		return klass
+	let!( :careers_domain_class ) do
+		return Class.new( described_class ) do
+			set_temporary_name( "Rhizos::Domain::Careers (test class)" )
+		end
 	end
 	let( :careers_domain ) { careers_domain_class.new }
 
+	let!( :media_domain_class ) do
+		return Class.new( described_class ) do
+			set_temporary_name( "Rhizos::Domain::Media (test class)" )
+		end
+	end
+	let( :media_domain ) { media_domain_class.new }
 
-	let( :test_domain_classes ) {[ social_domain_class, careers_domain_class ]}
-	let( :test_domains ) {[ social_domain, careers_domain ]}
+	let( :test_domain_classes ) do
+		[ social_domain_class, careers_domain_class, media_domain_class ]
+	end
+	let( :test_domains ) {[ social_domain, careers_domain, media_domain ]}
+
+	let( :default_domain_class ) { described_class.get_subclass(:default) }
+	let( :default_domain ) { default_domain_class.new }
+	let( :all_domains ) { [default_domain] + test_domains }
 
 
 	it "has a default version" do
@@ -47,6 +62,93 @@ RSpec.describe( Rhizos::Domain ) do
 		social_domain_class::VERSION = '111.0.0'
 		expect( social_domain_class.version ).to eq( '111.0.0' )
 	end
+
+
+	it "has a default prefix" do
+		expect( social_domain_class.prefix ).to be_a( URI )
+		expect( social_domain_class.prefix ).to eq( DEFAULT_PREFIX_URI + 'social' )
+	end
+
+
+	it "can override its prefix using a shorthand" do
+		social_domain_class.prefix( 'us/social' )
+		expect( social_domain_class.prefix ).to eq( DEFAULT_PREFIX_URI + 'us/social' )
+	end
+
+
+	it "can override its prefix using a fully-qualified URI" do
+		social_domain_class.prefix( 'https://acme.example.com/us/social' )
+		expect( social_domain_class.prefix ).to eq( URI('https://acme.example.com/us/social') )
+	end
+
+
+	it "only depends on the default domain by default" do
+		expect( social_domain_class.dependencies ).to contain_exactly( DEFAULT_DOMAIN_URI )
+	end
+
+
+	it "can declare additional dependencies using its short name" do
+		social_domain_class.requires( :geo )
+		expect( social_domain_class.dependencies ).to contain_exactly(
+			DEFAULT_DOMAIN_URI,
+			DEFAULT_PREFIX_URI + 'geo'
+		)
+	end
+
+
+	it "can declare additional dependencies using its shorthand prefix" do
+		social_domain_class.requires( 'us/telecommunications' )
+		expect( social_domain_class.dependencies ).to contain_exactly(
+			DEFAULT_DOMAIN_URI,
+			DEFAULT_PREFIX_URI + 'us/telecommunications'
+		)
+	end
+
+
+	it "can declare additional dependencies using fully-qualified URIs" do
+		social_domain_class.requires( 'https://rhizos.info/us/banking' )
+		expect( social_domain_class.dependencies ).to contain_exactly(
+			DEFAULT_DOMAIN_URI,
+			URI('https://rhizos.info/us/banking')
+		)
+	end
+
+
+	it "supports sorting in dependency order" do
+		careers_domain_class.requires( :social )
+		media_domain_class.requires( :careers, :social )
+
+		dep_order = described_class.sorted
+
+		expect( dep_order ).to order( careers_domain_class ).after( social_domain_class )
+		expect( dep_order ).to order( careers_domain_class ).before( media_domain_class )
+		expect( dep_order ).to order( social_domain_class ).before( media_domain_class )
+	end
+
+
+	it "can be looked up with its URI prefix" do
+		prefix = social_domain_class.prefix
+
+		expect( described_class.for_uri(prefix) ).to be( social_domain_class )
+	end
+
+
+	it "can be looked up via one of its types' URIs" do
+		social_domain_class.prefix( 'us/social' )
+
+		expect( described_class.for_uri('https://rhizos.info/us/social/Post') ).
+			to be( social_domain_class )
+	end
+
+
+	it "updates the domain lookup when a domain declares a new prefix" do
+		expect {
+			social_domain_class.prefix( 'us/social' )
+		}.to change {
+			described_class.for_uri( 'https://rhizos.info/us/social/Post' )
+		}.from( nil ).to( social_domain_class )
+	end
+
 
 
 	describe "the factory class" do

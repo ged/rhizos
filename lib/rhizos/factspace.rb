@@ -208,6 +208,52 @@ class Rhizos::Factspace
 	end
 
 
+	### Create or update the local Actor that represents this factspace.
+	def create_local_actor
+		self.log.info "Creating local Actor node"
+		actor_query = Rhizos.query( CREATE_LOCAL_ACTOR_QUERY )
+
+		tuples = self.query( actor_query ) do |stmt|
+			self.log.debug "Creating actor node %s" % [ self.node_id ]
+			stmt.bind( id: self.node_id )
+		end
+
+		return tuples.first['f.id']
+	end
+
+
+	#
+	# High-level query API
+	#
+
+	### Return a Kuzu::Node for each Fact in the Factspace.
+	def facts
+		query = Rhizos.query( MATCH_FACTS_QUERY )
+		tuples = self.query( query )
+		return tuples.map {|tuple| tuple['f'] }
+	end
+
+
+	### Return a Kuzu::Node for each Lifetime in the Factspace.
+	def lifetimes
+		query = Rhizos.query( MATCH_LIFETIMES_QUERY )
+		tuples = self.query( query )
+		return tuples.map {|tuple| tuple['l'] }
+	end
+
+
+	### Return a Kuzu::Node for each Actor in the Factspace.
+	def actors
+		query = Rhizos.query( MATCH_ACTORS_QUERY )
+		tuples = self.query( query )
+		return tuples.map {|tuple| tuple['a'] }
+	end
+
+
+	#
+	# Timers
+	#
+
 	### Register a timer for callback execution at +interval+.
 	### If the factspace is running, the callback is executed immediately.
 	def add_periodic_timer( interval=60.seconds, &callback )
@@ -228,6 +274,24 @@ class Rhizos::Factspace
 		timer.stop
 	end
 
+
+	### Cancel running periodic timers.
+	def stop_timers
+		self.log.info "Stopping %d periodic timers." % [ self.timers.size ]
+		self.timers.each( &:stop )
+	end
+
+
+	### Begin all registered periodic timers.
+	def start_timers
+		self.log.info "Starting %d periodic timers." % [ self.timers.size ]
+		self.timers.each( &:start )
+	end
+
+
+	#
+	# Domains
+	#
 
 	### Load the domains the Factspace will use.
 	def load_domains
@@ -347,19 +411,10 @@ class Rhizos::Factspace
 	end
 
 
-	### Create or update the local Actor that represents this factspace.
-	def create_local_actor
-		self.log.info "Creating local Actor node"
-		actor_query = Rhizos.query( CREATE_LOCAL_ACTOR_QUERY )
 
-		tuples = self.query( actor_query ) do |stmt|
-			self.log.debug "Creating actor node %s" % [ self.node_id ]
-			stmt.bind( id: self.node_id )
-		end
-
-		return tuples.first['f.id']
-	end
-
+	#
+	# Evolvers
+	#
 
 	### Get an evolver by its name. Returns `nil` if no such evolver is loaded.
 	def get_evolver( name )
@@ -397,20 +452,6 @@ class Rhizos::Factspace
 			self.log.info "  stopping %s" % [ name ]
 			evolver.stop( self )
 		end
-	end
-
-
-	### Cancel running periodic timers.
-	def stop_timers
-		self.log.info "Stopping %d periodic timers." % [ self.timers.size ]
-		self.timers.each( &:stop )
-	end
-
-
-	### Begin all registered periodic timers.
-	def start_timers
-		self.log.info "Starting %d periodic timers." % [ self.timers.size ]
-		self.timers.each( &:start )
 	end
 
 
@@ -461,6 +502,8 @@ class Rhizos::Factspace
 			return "(not running)"
 		end
 	end
+
+
 
 end # class Rhizos::Factspace
 

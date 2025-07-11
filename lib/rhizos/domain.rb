@@ -1,7 +1,11 @@
 # -*- ruby -*-
 
+require 'uri'
+require 'set'
+require 'tsort'
 require 'loggability'
 require 'pluggability'
+require 'ffi/radix_tree'
 require 'mixins'
 
 require 'rhizos' unless defined?( Rhizos )
@@ -10,8 +14,10 @@ require 'rhizos/domain_type'
 require 'rhizos/domain_relation'
 
 
+# The base domain class.
 class Rhizos::Domain
-	extend Loggability,
+	extend TSort,
+		Loggability,
 		Pluggability,
 		Mixins::MethodUtilities
 	include Rhizos::Constants,
@@ -25,22 +31,61 @@ class Rhizos::Domain
 	log_to :rhizos
 
 
+	# A trie of domain URI prefixes for lookups, built on demand
+	@uri_trie = nil
+
+	# A Hash of domains keyed by their URI prefix
+	@by_prefix = {}
+	singleton_attr_reader :by_prefix
+
+
+	##
+	# Declared dependencies (empty for the base class)
+	singleton_attr_accessor :dependencies
+	@dependencies = Set.new
+
+	##
+	# The domain's types
+	singleton_attr_accessor :types
+
+	##
+	# The domain's relations
+	singleton_attr_accessor :relations
+
+	##
+	# The domain's evolvers
+	singleton_attr_accessor :evolvers
+
+
 	### Set up some class-instance data for all subclasses.
 	def self::inherited( subclass )
 		super
 
-		subclass.singleton_attr_accessor( :types )
 		subclass.types = {}
-
-		subclass.singleton_attr_accessor( :relations )
-		subclass.relations = Hash.new do |hash,name|
+		subclass.relations = Hash.new do |hash, name|
 			hash[ name ] = Rhizos::DomainRelation.new( name )
 		end
-
-		subclass.singleton_attr_accessor( :evolvers )
 		subclass.evolvers = {}
+		subclass.dependencies = Set.new( [DEFAULT_DOMAIN_URI] )
 	end
 
+
+	### Pluggability hook -- override the plugin registration to also add the
+	### domain prefix lookup.
+	def self::register_plugin_type( subclass )
+		super
+
+		if subclass.plugin_name
+			self.log.debug "Adding initial prefix for %p (%p)" % [ subclass, subclass.plugin_name ]
+			initial_prefix = DEFAULT_PREFIX_URI + subclass.plugin_name
+			subclass.prefix( initial_prefix )
+		end
+	end
+
+
+	#
+	# Domain DSL
+	#
 
 	### Return the version of the domain, which should be a semver-compatible
 	### String.
@@ -49,13 +94,43 @@ class Rhizos::Domain
 			@version = new_version
 		else
 			return @version ||= begin
-				if self.const_defined?( :VERSION, true )
-					self.const_get( :VERSION, true )
+				if self.const_defined?( :VERSION, false )
+					self.log.debug "Using VERSION constant for domain version"
+					self.const_get( :VERSION, false )
 				else
-					"0.0.0"
+					'0.0.0'
 				end
 			end
 		end
+	end
+
+
+	### Mark a dependency of this domain on one or more other +domains+.
+	def self::requires( *domains )
+		self.log.debug "Adding dependency on %p" % [ domains ]
+		domains = domains.flatten.map {|raw| self.qualify_domain_uri(raw) }
+		self.dependencies.merge( domains )
+	end
+
+
+	### If +uri+ is given, declare that types in this domain have the specified
+	### +uri+ prefix. If the +uri+ is not an absolute URI, prepend the DEFAULT_PREFIX_URI,
+	### otherwise use it as-is. Returns the current prefix.
+	def self::prefix( uri=nil )
+		if uri
+			Rhizos::Domain.reset_domain_lookup
+
+			if @prefix
+				self.log.warn "Replacing previous prefix %p for %p" % [ @prefix, self ]
+				Rhizos::Domain.by_prefix.delete( @prefix.to_s )
+			end
+
+			@prefix = self.qualify_domain_uri( uri )
+			self.log.debug "Setting the prefix for %p to %p" % [ self, @prefix ]
+			Rhizos::Domain.by_prefix[ @prefix.to_s ] = self
+		end
+
+		return @prefix
 	end
 
 
@@ -134,9 +209,6 @@ class Rhizos::Domain
 		rel_chunks = self.collate_schema_relations( domains )
 		schema_query = ( type_chunks + rel_chunks ).join( "\n\n" )
 
-		# schema_file = Rhizos.data_dir + 'domains/default.cypher'
-		# schema_query = schema_file.read
-
 		self.log.debug "Schema is: \n---\n%s\n---\n" % [ schema_query ]
 		return Rhizos.query( schema_query )
 	end
@@ -171,6 +243,48 @@ class Rhizos::Domain
 	end
 
 
+	### Return a FFI::RadixTree::Tree of domain URIs suitable for lookup, building it
+	### if necessary.
+	def self::uri_trie
+		return @uri_trie ||= self.build_uri_trie
+	end
+
+
+	### Return an FFI::RadixTree::Tree out of all loaded domains' prefix URIs.
+	def self::build_uri_trie
+		trie = FFI::RadixTree::Tree.new
+		self.log.info "Building the domain URI trie for %d domains" %
+			[ self.derivative_classes.size ]
+
+		self.derivative_classes.each do |domain|
+			uri = domain.prefix.to_s
+			self.log.debug "  adding %p" % [ uri ]
+			trie.push( uri, uri )
+		end
+
+		return trie
+	end
+
+
+	### Return the Domain class associated with the given +domain_uri+.
+	def self::for_uri( domain_uri )
+		self.log.debug "Looking up the domain URI for %p" % [ domain_uri ]
+		prefix = Rhizos::Domain.uri_trie.longest_prefix_value( domain_uri.to_s )
+		self.log.debug "  the prefix for %p is: %p" % [ domain_uri, prefix ]
+		return Rhizos::Domain.by_prefix[ prefix ]
+	end
+
+
+	### Return the given +uri+ as a fully-qualified absolute URI object. Relative URIs will
+	### have the DEFAULT_PREFIX_URI prepended.
+	def self::qualify_domain_uri( uri )
+		uri = URI( uri.to_s )
+		uri = DEFAULT_PREFIX_URI + uri unless uri.absolute?
+
+		return uri
+	end
+
+
 	### Collate all the types and relations from the specified +domains+ and return a
 	### query object that can be used to remove them.
 	def self::remove_schema( *domains )
@@ -178,6 +292,40 @@ class Rhizos::Domain
 		return Rhizos.query( delete_query )
 	end
 
+
+	### Return the currently-loaded domains in topological (dependency) order.
+	def self::sorted
+		return self.tsort.reverse
+	end
+
+
+	### TSort API -- yield each model class.
+	def self::tsort_each_node( &block )
+		self.log.debug "TSort: yielding %d children" % [ self.derivative_classes.size ]
+		self.derivative_classes.each( &block )
+	end
+
+
+	### TSort API -- yield each of the given +model_class+'s dependent model
+	### classes.
+	def self::tsort_each_child( model_class ) # :yields: model_class
+		self.log.debug "TSort: yielding children of %p" % [ model_class ]
+		Rhizos::Domain.derivative_classes.select do |domain|
+			yield( domain ) if domain.dependencies.include?( model_class.prefix )
+		end
+	end
+
+
+	### Reset the domain class's domain lookup data structures. This will cause them to be
+	### rebuilt when they are next used.
+	def self::reset_domain_lookup
+		@uri_trie = nil
+	end
+
+
+	#
+	# Instance methods
+	#
 
 	### Create a new instance of the Domain.
 	def initialize
@@ -211,6 +359,10 @@ class Rhizos::Domain
 	end
 
 
+	#########
+	protected
+	#########
+
 	### Mixins::Inspection API -- Return the details for inspection output.
 	def inspect_details
 		return "version: %s, %d types, %d relations" % [
@@ -219,6 +371,7 @@ class Rhizos::Domain
 			self.class.relations.length,
 		]
 	end
+
 
 end # class Rhizos::Domain
 
