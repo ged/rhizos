@@ -51,7 +51,7 @@ module Rhizos
 
 	### Construct and return a Rhizos::Factspace using the specified arguments.
 	def self::factspace( ... )
-		return Rhizos::Factspace.new( ... )
+		return Rhizos::Factspace.setup( ... )
 	end
 
 
@@ -61,7 +61,7 @@ module Rhizos
 
 	### Get the loaded config (a Configurability::Config object)
 	def self::config
-		Configurability.loaded_config
+		return Configurability.loaded_config
 	end
 
 
@@ -86,7 +86,7 @@ module Rhizos
 					[ config_file, defaults.keys ]
 				Configurability::Config.load( config_file, defaults )
 			else
-				Configurability.default_config
+				self.default_config
 			end
 
 		config.install

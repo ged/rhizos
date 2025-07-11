@@ -41,10 +41,16 @@ module Rhizos::SpecHelpers
 	module_function
 	###############
 
+	### Return a Pathname pointing to a temporary file.
+	def tmpfile_pathname( filetype='spec' )
+		Pathname(Dir::Tmpname.create(['rhizos-', '-test-' + filetype]) {})
+	end
+
+
 	### Run the specified +example+ with the mission directory set to a tmpdir, cleaning it
 	### up when the example is done.
 	def with_temp_runtime_dir( machine_id, example )
-		Dir.mktmpdir( ['ravn', 'spec'] ) do |dir|
+		Dir.mktmpdir( ['rhizos', 'spec'] ) do |dir|
 
 			test_runtime_dir = Pathname( dir )
 			Rhizos::SpecHelpers.log.info "Test runtime directory is: %p" % [ test_runtime_dir ]

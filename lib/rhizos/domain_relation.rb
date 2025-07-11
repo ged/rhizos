@@ -19,9 +19,7 @@ class Rhizos::DomainRelation
 	# The Cypher query template to use for creating node tables
 	CREATE_QUERY = <<~END_OF_QUERY
 		CREATE REL TABLE %{name} (
-		%{connections}
-		%{properties}
-		%{multiplicity}
+		%{contents}
 		);
 		COMMENT ON TABLE %{name} IS '%{description}';
 	END_OF_QUERY
@@ -86,9 +84,27 @@ class Rhizos::DomainRelation
 	end
 
 
-	### Declare the Relation's multiplity to be `ONE_ONE`.
+	### Declare the Relation's multiplicity to be `ONE_ONE`.
 	def one_one
-		self.multiplity = :ONE_ONE
+		self.multiplicity = :ONE_ONE
+	end
+
+
+	### Declare the Relation's multiplicity to be `MANY_MANY`.
+	def many_many
+		self.multiplicity = :MANY_MANY
+	end
+
+
+	### Declare the Relation's multiplicity to be `ONE_MANY`.
+	def one_many
+		self.multiplicity = :ONE_MANY
+	end
+
+
+	### Declare the Relation's multiplicity to be `MANY_ONE`.
+	def many_one
+		self.multiplicity = :MANY_ONE
 	end
 
 
@@ -128,12 +144,16 @@ class Rhizos::DomainRelation
 			return nil
 		end
 
+		contents = [
+			self.connections_cypher,
+			self.properties_cypher,
+			self.multiplicity
+		]
+
 		return CREATE_QUERY % {
 			name: self.name,
 			description: self.description,
-			connections: self.connections_cypher,
-			properties: self.properties_cypher,
-			multiplicity: self.multiplicity || ''
+			contents: contents.flatten.compact.join( ",\n" )
 		}
 	end
 
@@ -145,7 +165,7 @@ class Rhizos::DomainRelation
 			"  from %s to %s" % [ from_type, to_type ]
 		end
 
-		return lines.join( ",\n" )
+		return lines
 	end
 
 
@@ -162,24 +182,7 @@ class Rhizos::DomainRelation
 			line
 		end
 
-		return lines.join( ",\n" )
-	end
-
-
-	### Return a String containing Cypher language declarations for each of
-	### the DomainRelation's properties.
-	def properties_cypher
-		lines = self.properties.map do |property|
-			self.log.debug "Adding property %p to %p" % [ property.name, self.class ]
-			line = "  %s %s" % [ property.name, property.type ]
-			if (default_cypher = stringify_default( property.default ))
-				line << " DEFAULT %s" % [ default_cypher ]
-			end
-
-			line
-		end
-
-		return lines.join( ",\n" )
+		return lines
 	end
 
 end # class Rhizos::DomainRelation

@@ -18,7 +18,7 @@ class Rhizos::Timer
 	class LoggingTaskObserver # :nodoc:
 		extend Loggability
 
-		# Loggability API -- log to the Ravn logger
+		# Loggability API -- log to the Rhizos logger
 		log_to :rhizos
 
 

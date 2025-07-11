@@ -157,11 +157,13 @@ class Rhizos::Domain
 		case options
 		in {}
 			self.log.debug "Adding a %p REL" % [ name ]
-			self.relations[ name ].description = description if description
+			relation = self.relations[ name ]
+			relation.description = description if description
+			relation.instance_eval( &block ) if block
 
 		in {from: Symbol, to: Symbol}
 			self.log.debug "Adding a %p REL from %p to %p" % [ name, options[:from], options[:to] ]
-			self.relations[ name ].add( **options )
+			self.relations[ name ].add_connection( **options )
 
 		else
 			raise "Rel with options: %p not yet supported." % [ options ]
