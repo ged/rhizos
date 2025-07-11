@@ -135,8 +135,112 @@ RSpec.describe( Rhizos::DomainRelation ) do
 			expect( query ).to match( /\(.*MANY_ONE.*\)/mi )
 		end
 
+
+		it "sets the default for properties that have one set" do
+			instance = described_class.new( :UPDATED_BY )
+
+			instance.add_connection( from: :Fact, to: :Actor )
+			instance.add_property( :at, 'timestamp', default: :current_timestamp )
+
+			query = instance.cypher
+
+			expect( query ).to match( /CREATE REL TABLE (?-i:UPDATED_BY) \(.*\);/mi )
+			expect( query ).to match( /\(.*at TIMESTAMP DEFAULT current_timestamp\(\).*\)/mi )
+		end
+
 	end
 
+
+	describe "merging" do
+
+		let( :instance1 ) do
+			instance = described_class.new( :IS_A, 'type-of relationship' )
+			instance.add_connection( from: :Pet, to: :Person )
+			instance.add_property( :name, 'string' )
+			instance.one_many
+			return instance
+		end
+
+		let( :instance2 ) do
+			instance = described_class.new( :IS_A )
+			instance.add_connection( from: :Person, to: :Person )
+			instance.one_many
+			return instance
+		end
+
+
+		it "can merge two instances with different connections" do
+			merged = instance1.merge( instance2 )
+
+			expect( merged ).to be_a( described_class )
+			expect( merged ).to_not be( instance1 )
+			expect( merged ).to_not be( instance2 )
+			expect( merged.connections.size ).to eq( 2 )
+			expect( merged.connections ).to contain_exactly( [:Pet, :Person], [:Person, :Person] )
+			expect( merged.multiplicity ).to eq( :ONE_MANY )
+			expect( merged.description ).to eq( 'type-of relationship' )
+		end
+
+
+		it "can merge in either direction" do
+			merged = instance2.merge( instance1 )
+
+			expect( merged ).to be_a( described_class )
+			expect( merged ).to_not be( instance1 )
+			expect( merged ).to_not be( instance2 )
+			expect( merged.connections.size ).to eq( 2 )
+			expect( merged.connections ).to contain_exactly( [:Pet, :Person], [:Person, :Person] )
+			expect( merged.multiplicity ).to eq( :ONE_MANY )
+			expect( merged.description ).to eq( 'type-of relationship' )
+		end
+
+
+		it "fails if they have different names"do
+			instance2.name = :HAS_A
+
+			expect {
+				instance1.merge( instance2 )
+			}.to raise_error( Rhizos::SchemaError, /conflicting names/i )
+		end
+
+
+		it "fails if they have different descriptions set" do
+			instance2.description = 'something else'
+
+			expect {
+				instance1.merge( instance2 )
+			}.to raise_error( Rhizos::SchemaError, /conflicting description/i )
+		end
+
+
+		it "succeeds if they both have the same description" do
+			instance2.description = instance1.description.dup
+
+			merged = instance1.merge( instance2 )
+
+			expect( merged ).to be_a( described_class )
+			expect( merged.description ).to eq( instance1.description )
+		end
+
+
+		it "fails if they both declare properties" do
+			instance2.add_property( :label, 'string' )
+
+			expect {
+				instance1.merge( instance2 )
+			}.to raise_error( Rhizos::SchemaError, /conflicting property declarations/i )
+		end
+
+
+		it "fails if they have different multiplicities" do
+			instance2.one_one
+
+			expect {
+				instance1.merge( instance2 )
+			}.to raise_error( Rhizos::SchemaError, /conflicting multiplicity declarations/i )
+		end
+
+	end
 
 end
 

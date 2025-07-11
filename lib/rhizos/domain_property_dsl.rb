@@ -18,6 +18,17 @@ require 'rhizos' unless defined?( Rhizos )
 # for the list of supported options.
 module Rhizos::DomainPropertyDSL
 
+	### Inclusion hook -- make sure the including +mod+ has logging enabled.
+	def self::included( mod )
+		super
+
+		unless mod.respond_to?( :log )
+			mod.extend( Loggability )
+			mod.log_to( :rhizos )
+		end
+	end
+
+
 	### Define a new property type method for the specified +datatype+.
 	def self::define_property_type( name, cypher_datatype=name.upcase ) # :nodoc:
 		define_method( name ) do |prop_name, **options|

@@ -46,7 +46,7 @@ class Rhizos::DomainRelation
 
 	##
 	# The name of the relation
-	attr_reader :name
+	attr_accessor :name
 
 	##
 	# The description of the relation, to be added to the rel table as a comment.
@@ -111,29 +111,61 @@ class Rhizos::DomainRelation
 	### Return a new DomainRelation object that merges the receiver with
 	### +other_relation+.
 	def merge( other_relation )
-		new_instance = self.dup
+		merged = self.dup
 
-		if self.description && other_relation.description
-			raise Rhizos::SchemaError, "colliding descriptions in %s" % [ self.name ]
-		elsif other_relation.description
-			new_instance.description = other_relation.description.dup
-		end
+		merged.merge_name( other_relation )
+		merged.merge_description( other_relation )
+		merged.merge_properties( other_relation )
+		merged.merge_multiplicities( other_relation )
 
-		if !self.properties.empty? && !other_relation.properties.empty?
-			raise Rhizos::SchemaError, "colliding property declarations in %s" % [ self.name ]
-		elsif !other_relation.properties.empty?
-			new_instance.properties = other_relation.properties.dup
-		end
+		merged.connections = self.connections | other_relation.connections
 
-		if self.multiplicity && other_relation.multiplicity
-			raise Rhizos::SchemaError, "colliding multiplicity declarations in %s" % [ self.name ]
-		elsif other_relation.multiplicity
-			new_instance.multiplicity = other_relation.multiplicity
-		end
+		return merged
+	end
 
-		new_instance.connections = self.connections | other_relation.connections
 
-		return new_instance
+	### Check for conflicting #name during a #merge and raise a Rhizos::SchemaError
+	### if there's a conflict.
+	def merge_name( other_relation )
+		raise Rhizos::SchemaError, "conflicting names in %s" % [ self.name ] if
+			self.name != other_relation.name
+	end
+
+
+	### Merge descriptions with +other_relation+, raising a Rhizos::SchemaError if
+	### the descriptions conflict.
+	def merge_description( other_relation )
+		return unless other_relation.description
+
+		raise Rhizos::SchemaError, "conflicting descriptions in %s" % [ self.name ] if
+			self.description && self.description != other_relation.description
+
+		self.description = other_relation.description.dup
+	end
+
+
+	### Merge properties with +other_relation+, raising a Rhizos::SchemaError if
+	### both +other_relation+ and the receiver define properties.
+	def merge_properties( other_relation )
+		return if other_relation.properties.empty?
+
+		raise Rhizos::SchemaError, "conflicting property declarations in %s" % [ self.name ] if
+			!self.properties.empty?
+
+		self.properties.replace( other_relation.properties )
+	end
+
+
+	### Merge the multiplicity specification with +other_relation+, raising a
+	### Rhizos::SchemaError if there's a conflict.
+	def merge_multiplicities( other_relation )
+		return unless other_relation.multiplicity
+
+		raise Rhizos::SchemaError,
+			"conflicting multiplicity declarations in %s" % [ self.name ] if
+				self.multiplicity && self.multiplicity != other_relation.multiplicity
+
+		self.multiplicity = other_relation.multiplicity
 	end
 
 
