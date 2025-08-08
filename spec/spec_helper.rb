@@ -11,6 +11,7 @@ require 'securerandom'
 require 'loggability/spechelpers'
 
 require 'rhizos'
+require 'rhizos/testing'
 
 
 module Rhizos::SpecHelpers
@@ -158,6 +159,7 @@ RSpec.configure do |config|
 		expectations.include_chain_clauses_in_custom_matcher_descriptions = true
 	end
 
+	config.include( Rhizos::Testing )
 	config.include( Rhizos::SpecHelpers )
 	config.include( Loggability::SpecHelpers )
 end
