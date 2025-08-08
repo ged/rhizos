@@ -16,6 +16,30 @@ require 'rhizos/refinements'
 using Rhizos::NumericRefinements
 
 
+# The datastore interface for Facts in Rhizos.
+#
+# The Factspace is launched in three stages: instantiation, setup, and start.
+#
+# ## Instantiation
+# 
+# New instances are set up with two critical pieces of information: the path to
+# the database file on disk, and the list of user domains to load. Both of these
+# have reasonable defaults, so they're optional.
+#
+# The path of the database is straightforward, but if you set it to `nil`, an
+# in-memory database will be used instead of a permanent one.
+#
+# The +domains+ can be set when the Factspace is constructed, or added to a new
+# instance. Once the Factspace has had #setup called on it, the domains are
+# immmutable.
+#
+# ## To Document
+#
+# - Querying
+# - Evolvers
+# - Actor
+# - Timer API
+#
 class Rhizos::Factspace
 	extend Loggability,
 		Configurability,
@@ -25,10 +49,7 @@ class Rhizos::Factspace
 		Mixins::Inspection
 
 	# The default options to use when starting
-	DEFAULT_OPTIONS = {
-		domains: [],
-		db_path: nil,
-	}.freeze
+	DEFAULT_OPTIONS = {}.freeze
 
 	# The domains to always load
 	DEFAULT_DOMAINS = %i[ default ]
@@ -66,8 +87,8 @@ class Rhizos::Factspace
 
 	### Create a new Factspace for this host and set it up, but don't start it. Returns
 	### the new instance.
-	def self::setup( **options )
-		instance = new( **options )
+	def self::setup( db_path: nil, domains: [], **options )
+		instance = new( db_path:, domains:, **options )
 		instance.setup
 
 		return instance
@@ -76,8 +97,8 @@ class Rhizos::Factspace
 
 	### Create a new Factspace for this host and start it. If the +block+ is given,
 	### yield the instance to the block before it's started. Returns the new instance.
-	def self::start( **options, &block )
-		instance = self.setup( **options, &block )
+	def self::start( db_path: nil, domains: [], **options, &block )
+		instance = self.setup( db_path:, domains:, **options, &block )
 		block.call( instance, **options ) if block
 		instance.start
 
@@ -85,14 +106,21 @@ class Rhizos::Factspace
 	end
 
 
+	#
+	# Instance methods
+	#
+
 	### Create a new Factspace configured with the specified +options+.
-	def initialize( **options )
+	def initialize( db_path: nil, domains: [], **options )
 		@options   = DEFAULT_OPTIONS.merge( **options ).freeze
+
+		@db_path   = db_path
+		@domains   = self.load_domains( *domains )
+		self.log.info "Loaded domains are now: %p" % [ self.domains ]
 
 		@node_id   = nil
 		@conn      = nil
 		@thread    = nil
-		@domains   = nil
 		@evolvers  = nil
 		@actor     = nil
 		@timers    = nil
@@ -142,6 +170,23 @@ class Rhizos::Factspace
 	attr_predicate_accessor :running
 
 
+	### Ensure the Factspace is set up for running.
+	def setup
+		self.domains.freeze
+
+		# Or-equal so this method is idempotent
+		@node_id  ||= self.class.read_node_id or
+			raise "couldn't read host's node ID file"
+
+		@conn     ||= self.connect_to_database
+		self.check_or_install_schema
+
+		@actor    ||= self.create_local_actor
+		@evolvers ||= self.load_evolvers
+		@timers   ||= Set.new
+	end
+
+
 	### Start up the Factspace. Returns the main thread of execution.
 	def start
 		self.setup
@@ -170,41 +215,9 @@ class Rhizos::Factspace
 	end
 
 
-	### The primary query interface: execute the specified +query_obj+ against the
-	### database and return the resulting tuples. If a block is given, a Kuzu::PreparedStatement
-	### is yielded to it before execution so that the block can bind variables to it.
-	def query( query_obj )
-		source = query_obj.cypher
-		if block_given?
-			statement = self.conn.prepare( source )
-			yield( statement )
-			return statement.execute {|res| res.tuples }
-		else
-			return self.conn.query( source ) {|res| res.tuples }
-		end
-	rescue Kuzu::QueryError => err
-		self.log.error "%p in query `%s`: %s" % [ err.class, source, err.message ]
-		raise
-	end
-
-
 	### Return the Factspace's node name, which is based on its UUID.
 	def node_name
 		return "factspace-%s" % [ self.node_id ]
-	end
-
-
-	### Ensure the Factspace is set up for running.
-	def setup
-		# Or-equal so this method is idempotent
-		@node_id  ||= self.class.read_node_id or
-			raise "couldn't read host's node ID file"
-
-		@conn     ||= self.connect_to_database
-		@domains  ||= self.load_domains
-		@actor    ||= self.create_local_actor
-		@evolvers ||= self.load_evolvers
-		@timers   ||= Set.new
 	end
 
 
@@ -225,6 +238,24 @@ class Rhizos::Factspace
 	#
 	# High-level query API
 	#
+
+	### The primary query interface: execute the specified +query_obj+ against the
+	### database and return the resulting tuples. If a block is given, a Kuzu::PreparedStatement
+	### is yielded to it before execution so that the block can bind variables to it.
+	def query( query_obj )
+		source = query_obj.cypher
+		if block_given?
+			statement = self.conn.prepare( source )
+			yield( statement )
+			return statement.execute {|res| res.tuples }
+		else
+			return self.conn.query( source ) {|res| res.tuples }
+		end
+	rescue Kuzu::QueryError => err
+		self.log.error "%p in query `%s`: %s" % [ err.class, source, err.message ]
+		raise
+	end
+
 
 	### Return a Kuzu::Node for each Fact in the Factspace.
 	def facts
@@ -294,19 +325,21 @@ class Rhizos::Factspace
 	#
 
 	### Load the domains the Factspace will use.
-	def load_domains
+	def load_domains( *domains )
 		default_domains = self.load_default_domains
-		user_domains = self.load_user_domains
+		user_domains = self.load_user_domains( *domains )
 
-		domains = default_domains + user_domains
+		return default_domains + user_domains
+	end
 
-		if Rhizos::Domain.schema_is_installed?( self )
-			self.check_schema( domains )
-		else
-			self.install_schema( domains )
-		end
 
-		return domains
+	### Load additional domains into the Factspace. This raises if called after the
+	### Facespace is started.
+	def add_domains( *new_domains )
+		raise "can't add domains to a running Factspace" if self.running?
+
+		new_domains = self.load_user_domains( *new_domains )
+		self.domains.merge( new_domains )
 	end
 
 
@@ -401,8 +434,8 @@ class Rhizos::Factspace
 
 	### Load any domains specified by the user in the `:domains` options passed to
 	### the constructor and return them as a Set.
-	def load_user_domains
-		domain_names = Array( self.options[:domains] )
+	def load_user_domains( *domains )
+		domain_names = Array( domains ).flatten
 
 		return domain_names.map do |domain_name|
 			self.log.info "Loading the `%s' domain." % [ domain_name ]
@@ -458,18 +491,28 @@ class Rhizos::Factspace
 	### Return the path to the database as a Pathname, or `nil` if it's an in-memory
 	### database.
 	def db_path
-		pathname = self.options[:db_path]
-		return nil if pathname.nil? || pathname == ''
+		return nil if @db_path.nil? || @db_path == ''
 
-		return Pathname( pathname ).expand_path
+		return Pathname( @db_path ).expand_path
 	end
 
 
 	### Create the connetion to the Kuzu database
 	def connect_to_database
-		path = self.db_path || ''
-		db = Kuzu.database( path ) or raise "Couldn't connect to `%s'" % [ path ]
+		db = Kuzu.database( self.db_path ) or
+			raise "Couldn't create database: %s" % [ self.db_path || '(in-memory db)' ]
+
 		return db.connect
+	end
+
+
+	### Ensure the current database has the correct schema installed.
+	def check_or_install_schema
+		if Rhizos::Domain.schema_is_installed?( self )
+			self.check_schema( self.domains )
+		else
+			self.install_schema( self.domains )
+		end
 	end
 
 

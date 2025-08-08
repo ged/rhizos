@@ -39,26 +39,15 @@ RSpec.describe( Rhizos::Factspace ) do
 
 
 	it "always loads the default domain" do
-		begin
-			instance = described_class.start
-
-			expect( instance.domains ).to include( an_instance_of Rhizos::Domain::Default )
-		ensure
-			instance&.stop
-		end
+		instance = described_class.setup
+		expect( instance.domains ).to include( an_instance_of Rhizos::Domain::Default )
 	end
 
 
 	it "attempts to load any user domains specified" do
-		begin
-			instance = described_class.new( domains: %i[archery rowing] )
-
-			expect {
-				instance.start
-			}.to raise_error( Pluggability::PluginError, /couldn't find a domain/i )
-		ensure
-			instance&.stop
-		end
+		expect {
+			described_class.new( domains: %i[archery rowing] )
+		}.to raise_error( Pluggability::PluginError, /couldn't find a domain/i )
 	end
 
 

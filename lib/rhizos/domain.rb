@@ -75,7 +75,7 @@ class Rhizos::Domain
 	def self::register_plugin_type( subclass )
 		super
 
-		if subclass.plugin_name
+		if subclass.plugin_name && subclass.plugin_name.is_a?( String )
 			self.log.debug "Adding initial prefix for %p (%p)" % [ subclass, subclass.plugin_name ]
 			initial_prefix = DEFAULT_PREFIX_URI + subclass.plugin_name
 			subclass.prefix( initial_prefix )
