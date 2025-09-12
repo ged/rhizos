@@ -51,7 +51,7 @@ module Rhizos
 
 	### Construct and return a Rhizos::Factspace using the specified arguments.
 	def self::factspace( ... )
-		return Rhizos::Factspace.setup( ... )
+		return Rhizos::Factspace.new( ... )
 	end
 
 

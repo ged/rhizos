@@ -172,6 +172,7 @@ class Rhizos::Factspace
 
 	### Ensure the Factspace is set up for running.
 	def setup
+		self.log.info "Setting up the Factspace."
 		self.domains.freeze
 
 		# Or-equal so this method is idempotent
@@ -279,6 +280,7 @@ class Rhizos::Factspace
 		tuples = self.query( query )
 		return tuples.map {|tuple| tuple['a'] }
 	end
+
 
 
 	#
@@ -428,7 +430,7 @@ class Rhizos::Factspace
 
 		return DEFAULT_DOMAINS.map do |domain_name|
 			Rhizos::Domain.create( domain_name )
-		end
+		end.to_set
 	end
 
 
@@ -437,10 +439,12 @@ class Rhizos::Factspace
 	def load_user_domains( *domains )
 		domain_names = Array( domains ).flatten
 
+		# :TODO: Load dependency domains too
+
 		return domain_names.map do |domain_name|
 			self.log.info "Loading the `%s' domain." % [ domain_name ]
 			Rhizos::Domain.create( domain_name )
-		end
+		end.to_set
 	end
 
 

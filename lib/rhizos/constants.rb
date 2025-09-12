@@ -112,7 +112,7 @@ module Rhizos::Constants
 	CREATE_LOCAL_ACTOR_QUERY = <<~END_OF_QUERY
 		MERGE (a:Actor {id: uuid($id), isLocal: true})
 			-[i:IS_A]->(fact:Fact {confidence: 100})
-			-[l:HAS_A]->(life:Lifetime { description: "Actor is running" })
+			-[h:HAS_A]->(life:Lifetime { description: "Actor is running" })
 		ON CREATE SET
 			life.beginsAt = current_timestamp()
 		ON MATCH SET

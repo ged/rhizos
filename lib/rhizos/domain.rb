@@ -203,12 +203,12 @@ class Rhizos::Domain
 
 	### Collate all the nodes and rel types from the specifed +domains+ and return
 	### a query object that can be used to install them in a Kuzu database.
-	def self::collate_schema( *domains )
-		domains = domains.flatten.map( &:class )
+	def self::collate_schema( domains )
+		domain_classes = domains.map( &:class )
 
-		self.log.debug "Collating schemata from domains: %p" % [ domains ]
-		type_chunks = self.collate_schema_types( domains )
-		rel_chunks = self.collate_schema_relations( domains )
+		self.log.debug "Collating schema from domains: %p" % [ domain_classes ]
+		type_chunks = self.collate_schema_types( domain_classes )
+		rel_chunks = self.collate_schema_relations( domain_classes )
 		schema_query = ( type_chunks + rel_chunks ).join( "\n\n" )
 
 		self.log.debug "Schema is: \n---\n%s\n---\n" % [ schema_query ]
@@ -222,6 +222,7 @@ class Rhizos::Domain
 		merged = {}
 
 		domain_classes.each do |domain|
+			self.log.debug "Collating types from: %p" % [ domain ]
 			merged.merge!( domain.types ) do |name, old_type, new_type|
 				raise Rhizos::SchemaError, "%s (from %s) type collides with %s (from %s)" %
 					[ new_type.name, new_type.source, old_type.name, old_type.source ]
@@ -331,6 +332,7 @@ class Rhizos::Domain
 
 	### Create a new instance of the Domain.
 	def initialize
+		self.log.debug "Creating instance of %p" % [ self.class ]
 		@evolvers = self.class.evolvers.values.map( &:new )
 	end
 

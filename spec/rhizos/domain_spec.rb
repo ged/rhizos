@@ -154,13 +154,13 @@ RSpec.describe( Rhizos::Domain ) do
 	describe "the factory class" do
 
 		it "can generate a query that installs the schema for one or more domains" do
-			result = described_class.collate_schema( social_domain, careers_domain )
+			result = described_class.collate_schema( Set[social_domain, careers_domain] )
 			expect( result ).to respond_to( :cypher )
 		end
 
 
 		it "can generate a query that removes the schema for one or more domains" do
-			result = described_class.remove_schema( social_domain, careers_domain )
+			result = described_class.remove_schema( Set[social_domain, careers_domain] )
 			expect( result ).to respond_to( :cypher )
 		end
 
