@@ -121,7 +121,6 @@ class Rhizos::Factspace
 		@node_id   = nil
 		@conn      = nil
 		@thread    = nil
-		@evolvers  = nil
 		@actor     = nil
 		@timers    = nil
 
@@ -158,10 +157,6 @@ class Rhizos::Factspace
 	attr_reader :actor
 
 	##
-	# The evolver (Rhizos::Evolver) instances started from the loaded domains
-	attr_reader :evolvers
-
-	##
 	# a Set of registered periodic Rhizos::Timer objects.
 	attr_reader :timers
 
@@ -183,7 +178,6 @@ class Rhizos::Factspace
 		self.check_or_install_schema
 
 		@actor    ||= self.create_local_actor
-		@evolvers ||= self.load_evolvers
 		@timers   ||= Set.new
 	end
 
@@ -191,7 +185,7 @@ class Rhizos::Factspace
 	### Start up the Factspace. Returns the main thread of execution.
 	def start
 		self.setup
-		self.start_evolvers
+		self.start_domains
 		self.start_timers
 		self.running = true
 
@@ -207,7 +201,7 @@ class Rhizos::Factspace
 		if self.running?
 			self.log.info "Stopping %s" % [ self.node_name ]
 			self.stop_timers
-			self.stop_evolvers
+			self.stop_domains
 			self.running = false
 			self.thread.join( 5 ) or self.thread.kill
 		else
@@ -328,10 +322,16 @@ class Rhizos::Factspace
 
 	### Load the domains the Factspace will use.
 	def load_domains( *domains )
-		default_domains = self.load_default_domains
-		user_domains = self.load_user_domains( *domains )
+		Rhizos::Domain.load_all
 
-		return default_domains + user_domains
+		default_domains = self.load_default_domains.to_set
+		user_domains = self.load_user_domains( *domains ).to_set
+
+		all_domains = default_domains + user_domains
+
+		return all_domains.map do |domain|
+			domain.new( self )
+		end
 	end
 
 
@@ -342,6 +342,24 @@ class Rhizos::Factspace
 
 		new_domains = self.load_user_domains( *new_domains )
 		self.domains.merge( new_domains )
+	end
+
+
+	### Start up the domains registered to the Factspace.
+	def start_domains
+		self.domains.each do |domain|
+			self.log.info "Starting the %s domain." % [ domain.name ]
+			domain.start
+		end
+	end
+
+
+	### Stop the domains registered to the Factspace.
+	def stop_domains
+		self.domains.each do |domain|
+			self.log.info "Stopping the %s domain." % [ domain.name ]
+			domain.stop
+		end
 	end
 
 
@@ -423,72 +441,39 @@ class Rhizos::Factspace
 	end
 
 
-	### Load the domains that define the core functionality of the Factspace and
-	### return them as a Set.
+	### Load the domains (classes) that define the core functionality of the Factspace and
+	### return them as an Array.
 	def load_default_domains
 		self.log.info "Loading the default domains."
 
-		return DEFAULT_DOMAINS.map do |domain_name|
-			Rhizos::Domain.create( domain_name )
-		end.to_set
+		return DEFAULT_DOMAINS.flat_map do |domain_name|
+			self.load_domain_and_dependencies( domain_name )
+		end
 	end
 
 
-	### Load any domains specified by the user in the `:domains` options passed to
-	### the constructor and return them as a Set.
+	### Load any domains (classes) specified by the user in the `:domains` options passed to
+	### the constructor and return them as an Array.
 	def load_user_domains( *domains )
-		domain_names = Array( domains ).flatten
+		return [] if domains.empty?
 
-		# :TODO: Load dependency domains too
-
-		return domain_names.map do |domain_name|
-			self.log.info "Loading the `%s' domain." % [ domain_name ]
-			Rhizos::Domain.create( domain_name )
-		end.to_set
-	end
-
-
-
-	#
-	# Evolvers
-	#
-
-	### Get an evolver by its name. Returns `nil` if no such evolver is loaded.
-	def get_evolver( name )
-		return self.evolvers[ name.to_s ]
-	end
-
-
-	### For each loaded domain, load all of its evolvers.
-	def load_evolvers
-		self.log.info "Loading evolvers from %d domains." % [ self.domains.size ]
-		return self.domains.each_with_object( {} ) do |domain, hash|
-			domain.evolvers.each do |evolver|
-				name = evolver.name
-				self.log.info "  loaded the %p evolver from the %s domain" % [ name, domain ]
-				hash[ name ] = evolver
-			end
+		domains = Array( domains ).flatten
+		return domains.flat_map do |domain_name|
+			self.load_domain_and_dependencies( domain_name )
 		end
 	end
 
 
-	### Start the currently-loaded Evolvers.
-	def start_evolvers
-		self.log.info "Starting evolvers."
-		self.evolvers.each do |name, evolver|
-			self.log.info "  starting %s" % [ name ]
-			evolver.start( self )
+	### Load and return an array of the domain with the given +domain_name+ and its
+	### dependencies.
+	def load_domain_and_dependencies( domain_name )
+		self.log.info "Loading the %s domain." % [ domain_name ]
+		domain = Rhizos::Domain.get_subclass( domain_name )
+		dep_domains = domain.dependencies.map do |uri|
+			Rhizos::Domain.for_uri( uri ) or raise "missing dependency domain %s" % [ uri ]
 		end
-	end
 
-
-	### Stop all the currently-running evolvers.
-	def stop_evolvers
-		self.log.info "Stopping evolvers."
-		self.evolvers.each do |name, evolver|
-			self.log.info "  stopping %s" % [ name ]
-			evolver.stop( self )
-		end
+		return [ domain ] + dep_domains
 	end
 
 

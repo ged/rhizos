@@ -21,6 +21,20 @@ class Rhizos::Evolver
 	plugin_prefixes 'rhizos/evolver'
 
 
+	### Create a new instance of the Evolver for the given +domain+ instance.
+	def initialize( domain )
+		@domain = domain
+	end
+
+
+	######
+	public
+	######
+
+	##
+	# The Rhizos::Domain this Evolver belongs to
+	attr_reader :domain
+
 
 	### Start evolving the Facts in the given +factspace+. You can override this to
 	### register timers to interact with the +factspace+, set up any outside connections,

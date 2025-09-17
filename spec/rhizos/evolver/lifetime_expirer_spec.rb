@@ -8,7 +8,9 @@ require 'rhizos/evolver/lifetime_expirer'
 RSpec.describe( Rhizos::Evolver::LifetimeExpirer ) do
 
 	let( :factspace ) { Rhizos::Factspace.setup }
-	let( :instance ) { factspace.get_evolver(:lifetime_expirer) }
+	let( :owning_domain ) { Rhizos::Domain.get_subclass(:default) }
+	let( :domain ) { owning_domain.new(factspace) }
+	let( :instance ) { domain.get_evolver(:lifetime_expirer) }
 	let( :db ) { factspace.conn }
 
 

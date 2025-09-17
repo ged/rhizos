@@ -330,10 +330,13 @@ class Rhizos::Domain
 	# Instance methods
 	#
 
-	### Create a new instance of the Domain.
-	def initialize
-		self.log.debug "Creating instance of %p" % [ self.class ]
-		@evolvers = self.class.evolvers.values.map( &:new )
+	### Create a new instance of the Domain for the given +factspace+
+	def initialize( factspace )
+		@factspace = factspace
+		@evolvers  = self.class.evolvers.values.each_with_object({}) do |evolver_class, hash|
+			evolver = evolver_class.new( self )
+			hash[ evolver.name ] = evolver
+		end
 	end
 
 
@@ -344,6 +347,11 @@ class Rhizos::Domain
 	##
 	# Instances of Rhizos::Evolvers declared by the domain.
 	attr_reader :evolvers
+
+	##
+	# The Rhizos::Factspace this domain is loaded into
+	attr_reader :factspace
+
 
 
 	### Return the simplified name of the domain; this is the same as the Pluggability
@@ -363,9 +371,47 @@ class Rhizos::Domain
 	end
 
 
-	#########
-	protected
-	#########
+	### Start any processes associated with the Domain.
+	def start
+		self.start_evolvers
+	end
+
+
+	### Stop any processes associated with the Domain.
+	def stop
+		self.stop_evolvers
+	end
+
+
+	#
+	# Evolvers
+	#
+
+	### Get an evolver by its name. Returns `nil` if no such evolver is loaded.
+	def get_evolver( name )
+		return self.evolvers[ name.to_s ]
+	end
+
+
+	### Start the currently-loaded Evolvers.
+	def start_evolvers
+		self.log.info "Starting evolvers."
+		self.evolvers.each do |name, evolver|
+			self.log.info "  starting %s" % [ name ]
+			evolver.start( self.factspace )
+		end
+	end
+
+
+	### Stop all the currently-running evolvers.
+	def stop_evolvers
+		self.log.info "Stopping evolvers."
+		self.evolvers.each do |name, evolver|
+			self.log.info "  stopping %s" % [ name ]
+			evolver.stop( self.factspace )
+		end
+	end
+
 
 	### Mixins::Inspection API -- Return the details for inspection output.
 	def inspect_details
@@ -375,7 +421,6 @@ class Rhizos::Domain
 			self.class.relations.length,
 		]
 	end
-
 
 end # class Rhizos::Domain
 

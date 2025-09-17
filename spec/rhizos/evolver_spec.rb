@@ -14,8 +14,9 @@ RSpec.describe( Rhizos::Evolver ) do
 		end
 	end
 
-	let( :instance ) { evolver_subclass.new }
 	let( :factspace ) { double( Rhizos::Factspace ) }
+	let( :domain ) { double(Rhizos::Domain) }
+	let( :instance ) { evolver_subclass.new(domain) }
 
 
 	it "provides a #start method to hook startup" do

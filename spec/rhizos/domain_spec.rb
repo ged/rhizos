@@ -9,6 +9,12 @@ require 'rhizos/evolver'
 
 RSpec.describe( Rhizos::Domain ) do
 
+	before( :all ) do
+		# Ensure all the real domain classes are loaded so we don't clear them along with
+		# the testing ones
+		described_class.load_all
+	end
+
 	before( :each ) do
 		@loaded_domains = described_class.derivatives.dup
 		@domain_prefixes = described_class.by_prefix.dup
@@ -20,13 +26,15 @@ RSpec.describe( Rhizos::Domain ) do
 		described_class.derivatives.replace( @loaded_domains )
 	end
 
+	let( :factspace ) { Rhizos::Factspace.setup }
+
 
 	let!( :social_domain_class ) do
 		return Class.new( described_class ) do
 			set_temporary_name( "Rhizos::Domain::Social (test class)" )
 		end
 	end
-	let( :social_domain ) { social_domain_class.new }
+	let( :social_domain ) { social_domain_class.new(factspace) }
 
 
 	let!( :careers_domain_class ) do
@@ -34,7 +42,7 @@ RSpec.describe( Rhizos::Domain ) do
 			set_temporary_name( "Rhizos::Domain::Careers (test class)" )
 		end
 	end
-	let( :careers_domain ) { careers_domain_class.new }
+	let( :careers_domain ) { careers_domain_class.new(factspace) }
 
 	let!( :media_domain_class ) do
 		return Class.new( described_class ) do
@@ -49,7 +57,7 @@ RSpec.describe( Rhizos::Domain ) do
 	let( :test_domains ) {[ social_domain, careers_domain, media_domain ]}
 
 	let( :default_domain_class ) { described_class.get_subclass(:default) }
-	let( :default_domain ) { default_domain_class.new }
+	let( :default_domain ) { default_domain_class.new(factspace) }
 	let( :all_domains ) { [default_domain] + test_domains }
 
 
@@ -275,6 +283,29 @@ RSpec.describe( Rhizos::Domain ) do
 		end
 
 	end
+
+
+	describe "evolvers" do
+
+		it "allows access to its evolvers after it is created" do
+			social_domain_class.evolver( :lifetime_expirer )
+			instance = social_domain_class.new( factspace )
+
+			evolver = instance.get_evolver( :lifetime_expirer )
+
+			expect( evolver ).to be_an_instance_of( Rhizos::Evolver::LifetimeExpirer )
+		end
+
+
+		it "returns nil for a evolver if none exists with the requested name" do
+			instance = social_domain_class.new( factspace )
+
+			expect( instance.get_evolver(:deer_petter) ).to be_nil
+		end
+
+	end
+
+
 
 
 end

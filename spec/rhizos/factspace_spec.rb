@@ -174,27 +174,6 @@ RSpec.describe( Rhizos::Factspace ) do
 	end
 
 
-	describe "evolvers" do
-
-		it "allows access to its evolvers after it starts up" do
-			instance = described_class.setup
-
-			# An evolver in the default domain
-			evolver = instance.get_evolver( :lifetime_expirer )
-
-			expect( evolver ).to be_an_instance_of( Rhizos::Evolver::LifetimeExpirer )
-		end
-
-
-		it "returns nil for a evolver if none exists with the requested name" do
-			instance = described_class.setup
-
-			expect( instance.get_evolver(:deer_petter) ).to be_nil
-		end
-
-	end
-
-
 	describe "timers" do
 
 		it "allows registration of a periodic callback as a timer" do
