@@ -340,8 +340,11 @@ class Rhizos::Factspace
 	def add_domains( *new_domains )
 		raise "can't add domains to a running Factspace" if self.running?
 
-		new_domains = self.load_user_domains( *new_domains )
-		self.domains.merge( new_domains )
+		new_domain_classes = self.load_user_domains( *new_domains )
+		new_domains = new_domain_classes.each do |domain_class|
+			next if self.domains.any? {|current_domain| current_domain.class == domain_class }
+			self.domains << domain_class.new( self )
+		end
 	end
 
 

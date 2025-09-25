@@ -271,6 +271,7 @@ class Rhizos::Domain
 
 	### Return the Domain class associated with the given +domain_uri+.
 	def self::for_uri( domain_uri )
+		domain_uri = self.qualify_domain_uri( domain_uri )
 		self.log.debug "Looking up the domain URI for %p" % [ domain_uri ]
 		prefix = Rhizos::Domain.uri_trie.longest_prefix_value( domain_uri.to_s )
 		self.log.debug "  the prefix for %p is: %p" % [ domain_uri, prefix ]

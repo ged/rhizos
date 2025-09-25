@@ -135,9 +135,14 @@ RSpec.describe( Rhizos::Domain ) do
 
 
 	it "can be looked up with its URI prefix" do
-		prefix = social_domain_class.prefix
+		social_domain_class.prefix( 'us/social' )
+		expect( described_class.for_uri('https://rhizos.info/us/social') ).to be( social_domain_class )
+	end
 
-		expect( described_class.for_uri(prefix) ).to be( social_domain_class )
+
+	it "can be looked up with its shorthand URI prefix" do
+		social_domain_class.prefix( 'us/social' )
+		expect( described_class.for_uri('us/social') ).to be( social_domain_class )
 	end
 
 
@@ -145,6 +150,14 @@ RSpec.describe( Rhizos::Domain ) do
 		social_domain_class.prefix( 'us/social' )
 
 		expect( described_class.for_uri('https://rhizos.info/us/social/Post') ).
+			to be( social_domain_class )
+	end
+
+
+	it "can be looked up via one of its types' shorthand URIs" do
+		social_domain_class.prefix( 'us/social' )
+
+		expect( described_class.for_uri('us/social/Post') ).
 			to be( social_domain_class )
 	end
 
