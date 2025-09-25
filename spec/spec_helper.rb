@@ -27,12 +27,7 @@ module Rhizos::SpecHelpers
 
 		# :TODO: Make this conditional on a :tmp_mission_dir spec option?
 		context.around( :each ) do |example|
-			@machine_id = SecureRandom.uuid
-			Rhizos::SpecHelpers.log.info "Machine ID is: %s" % [ @machine_id ]
-
-			Rhizos::SpecHelpers.with_temp_runtime_dir( @machine_id, example )
-
-			@machine_id = nil
+			Rhizos::SpecHelpers.with_temp_runtime_dir( example )
 		end
 
 	end
@@ -50,16 +45,13 @@ module Rhizos::SpecHelpers
 
 	### Run the specified +example+ with the mission directory set to a tmpdir, cleaning it
 	### up when the example is done.
-	def with_temp_runtime_dir( machine_id, example )
+	def with_temp_runtime_dir( example )
 		Dir.mktmpdir( ['rhizos', 'spec'] ) do |dir|
 
 			test_runtime_dir = Pathname( dir )
 			Rhizos::SpecHelpers.log.info "Test runtime directory is: %p" % [ test_runtime_dir ]
 
-			machine_id_file = test_runtime_dir / 'machine-id'
-			machine_id_file.write( machine_id.tr('-', '') )
-
-			Rhizos::Factspace.machine_id_file = machine_id_file
+			Rhizos::Testing.make_tmp_machine_id_file( test_runtime_dir )
 
 			Dir.chdir( dir ) do
 				example.run

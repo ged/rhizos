@@ -139,7 +139,7 @@ RSpec.describe( Rhizos::Factspace ) do
 
 			expect {
 				instance.setup
-			}.to change { instance.node_id }.from( nil ).to( machine_id )
+			}.to change { instance.node_id }.from( nil ).to( a_string_matching(UUID_PATTERN) )
 		end
 
 
