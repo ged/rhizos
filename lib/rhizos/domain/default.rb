@@ -18,7 +18,7 @@ class Rhizos::Domain::Default < Rhizos::Domain
 		string :label
 		int32 :ordinal
 
-		many_one
+		many_many
 	end
 
 
