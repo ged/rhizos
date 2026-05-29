@@ -3,7 +3,6 @@ LICENSE.txt
 README.md
 bin/rhizos
 data/rhizos/domains/default.cypher
-history.txt
 lib/rhizos.rb
 lib/rhizos/constants.rb
 lib/rhizos/domain.rb
@@ -17,6 +16,7 @@ lib/rhizos/evolver/lifetime_expirer.rb
 lib/rhizos/exceptions.rb
 lib/rhizos/factspace.rb
 lib/rhizos/refinements.rb
+lib/rhizos/testing.rb
 lib/rhizos/timer.rb
 spec/rhizos/domain/default_spec.rb
 spec/rhizos/domain_property_dsl_spec.rb

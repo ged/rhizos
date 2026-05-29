@@ -1,13 +1,13 @@
 # rhizos
 
 home
-: https://github.com/RavnGroup/rhizos
+: https://sr.ht/~ged/Rhizos/
 
 code
-: https://github.com/RavnGroup/rhizos/
+: https://hg.sr.ht/~ged/Rhizos/browse
 
 docs
-: https://dev.ravn.com/docs/rhizos
+: https://deveiate.org/code/rhizos/
 
 
 ## Description
