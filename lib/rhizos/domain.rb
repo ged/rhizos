@@ -202,7 +202,7 @@ class Rhizos::Domain
 
 
 	### Collate all the nodes and rel types from the specifed +domains+ and return
-	### a query object that can be used to install them in a Kuzu database.
+	### a query object that can be used to install them in a Ladybug database.
 	def self::collate_schema( domains )
 		domain_classes = domains.map( &:class )
 

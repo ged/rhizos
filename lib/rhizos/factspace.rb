@@ -141,7 +141,7 @@ class Rhizos::Factspace
 	attr_reader :node_id
 
 	##
-	# The Kuzu::Connection object used to access the graph database
+	# The Ladybug::Connection object used to access the graph database
 	attr_reader :conn
 
 	##
@@ -235,7 +235,7 @@ class Rhizos::Factspace
 	#
 
 	### The primary query interface: execute the specified +query_obj+ against the
-	### database and return the resulting tuples. If a block is given, a Kuzu::PreparedStatement
+	### database and return the resulting tuples. If a block is given, a Ladybug::PreparedStatement
 	### is yielded to it before execution so that the block can bind variables to it.
 	def query( query_obj )
 		source = query_obj.cypher
@@ -246,13 +246,13 @@ class Rhizos::Factspace
 		else
 			return self.conn.query( source ) {|res| res.tuples }
 		end
-	rescue Kuzu::QueryError => err
+	rescue Ladybug::QueryError => err
 		self.log.error "%p in query `%s`: %s" % [ err.class, source, err.message ]
 		raise
 	end
 
 
-	### Return a Kuzu::Node for each Fact in the Factspace.
+	### Return a Ladybug::Node for each Fact in the Factspace.
 	def facts
 		query = Rhizos.query( MATCH_FACTS_QUERY )
 		tuples = self.query( query )
@@ -260,7 +260,7 @@ class Rhizos::Factspace
 	end
 
 
-	### Return a Kuzu::Node for each Lifetime in the Factspace.
+	### Return a Ladybug::Node for each Lifetime in the Factspace.
 	def lifetimes
 		query = Rhizos.query( MATCH_LIFETIMES_QUERY )
 		tuples = self.query( query )
@@ -268,7 +268,7 @@ class Rhizos::Factspace
 	end
 
 
-	### Return a Kuzu::Node for each Actor in the Factspace.
+	### Return a Ladybug::Node for each Actor in the Factspace.
 	def actors
 		query = Rhizos.query( MATCH_ACTORS_QUERY )
 		tuples = self.query( query )
@@ -489,9 +489,9 @@ class Rhizos::Factspace
 	end
 
 
-	### Create the connetion to the Kuzu database
+	### Create the connetion to the Ladybug database
 	def connect_to_database
-		db = Kuzu.database( self.db_path ) or
+		db = Ladybug.database( self.db_path ) or
 			raise "Couldn't create database: %s" % [ self.db_path || '(in-memory db)' ]
 
 		return db.connect

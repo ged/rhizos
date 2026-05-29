@@ -1,0 +1,6 @@
+\.o$
+\.log$
+\.lock$
+\.(bundle|so|dll)$
+tmp/
+spec/.status

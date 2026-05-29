@@ -7,7 +7,7 @@ gem 'ffi-radix_tree', '~> 0.6'
 gem 'loggability', '~> 0.18'
 gem 'mixins', '~> 0.1'
 gem 'pluggability', '~> 0.10'
-gem 'ruby-kuzu', '~> 0.0'
+gem 'ruby-ladybug', '~> 0.1'
 
 group :development do
 	gem 'rake-deveiate', '~> 0.10'

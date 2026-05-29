@@ -13,7 +13,7 @@ module Rhizos
 	class DomainError < Rhizos::Error; end
 
 
-	### An error with the Kuzu database schema
+	### An error with the Ladybug database schema
 	class SchemaError < Rhizos::Error; end
 
 end # module Rhizos

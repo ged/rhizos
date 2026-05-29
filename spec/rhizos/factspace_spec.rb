@@ -2,7 +2,7 @@
 
 require_relative '../spec_helper'
 
-require 'kuzu'
+require 'ladybug'
 require 'pluggability'
 require 'securerandom'
 require 'rhizos/factspace'
@@ -80,7 +80,7 @@ RSpec.describe( Rhizos::Factspace ) do
 
 		it "had different domains" do
 			described_class.setup( db_path: 'test', domains: [:geo] )
-			GC.start # Hopefully free the Kuzu::Database
+			GC.start # Hopefully free the Ladybug::Database
 
 			begin
 				instance = nil
@@ -96,7 +96,7 @@ RSpec.describe( Rhizos::Factspace ) do
 
 		it "is missing domains" do
 			described_class.setup( db_path: 'test' )
-			GC.start # Hopefully free the Kuzu::Database
+			GC.start # Hopefully free the Ladybug::Database
 
 			begin
 				instance = nil
@@ -116,7 +116,7 @@ RSpec.describe( Rhizos::Factspace ) do
 			previous_instance.query( change_version ) do |stmt|
 				stmt.bind( name: 'geo', version: '44.44.44' )
 			end
-			GC.start # Hopefully free the Kuzu::Database
+			GC.start # Hopefully free the Ladybug::Database
 
 			begin
 				instance = nil
@@ -285,7 +285,7 @@ RSpec.describe( Rhizos::Factspace ) do
 
 			nodes = instance.facts
 
-			expect( nodes ).to be_an( Array ).and( all be_a(Kuzu::Node) )
+			expect( nodes ).to be_an( Array ).and( all be_a(Ladybug::Node) )
 
 			nodes.each do |node|
 				expect( node.properties ).to include( :id, :confidence )
@@ -312,7 +312,7 @@ RSpec.describe( Rhizos::Factspace ) do
 
 			nodes = instance.lifetimes
 
-			expect( nodes ).to be_an( Array ).and( all be_a(Kuzu::Node) )
+			expect( nodes ).to be_an( Array ).and( all be_a(Ladybug::Node) )
 
 			nodes.each do |node|
 				expect( node.properties ).to include( :id, :beginsAt, :endsAt, :description )
@@ -338,7 +338,7 @@ RSpec.describe( Rhizos::Factspace ) do
 
 			nodes = instance.actors
 
-			expect( nodes ).to be_an( Array ).and( all be_a(Kuzu::Node) )
+			expect( nodes ).to be_an( Array ).and( all be_a(Ladybug::Node) )
 
 			nodes.each do |node|
 				expect( node.properties ).to include( :id, :identifier, :isLocal )

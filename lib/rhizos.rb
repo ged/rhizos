@@ -1,6 +1,6 @@
 # -*- ruby -*-
 
-require 'kuzu'
+require 'ladybug'
 require 'loggability'
 require 'configurability'
 require 'pluggability'
